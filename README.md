@@ -56,6 +56,35 @@ storage rack, WIP buffer, loading dock, office and utility panel — each with a
 sensible default footprint in metres. Any machine can be resized, rotated, and
 recoloured, and given a clearance halo for the space it needs around it.
 
+### Naming machines
+
+Three ways, whichever suits:
+
+- **Double-click** the machine on the canvas and type — or select it and press
+  <kbd>Enter</kbd> or <kbd>F2</kbd>. Same for zones and text labels.
+- Select it and edit **Name** at the top of the Properties panel.
+- Select a whole run and use **Name all** — typing `Press` names them
+  `Press 1`, `Press 2`, `Press 3`… ordered left to right, top to bottom.
+
+### Writing the process
+
+The right-hand panel has two tabs: **Design** (properties, cascade, stats) and
+**Process**. The Process tab is a step-by-step write-up of how the plant
+actually runs — you write it, in your own words, in whatever detail you want.
+
+- **+ Step** appends a step; each has a title and a details box that takes as
+  much text as you care to write (cycle times, tooling, who does it, checks).
+- **From selection** adds a step already linked to the selected machine.
+- A step linked to a machine puts its **number on that machine** in the layout,
+  so the drawing and the write-up stay tied together. Click the number in a
+  step to jump straight to that machine; the ✕ on the chip unlinks it.
+- Reorder with ↑ ↓, copy with ⧉, delete with ✕, and use **↔** in the panel
+  header to widen the sidebar when you are writing at length.
+- Steps are saved inside the layout file, and **Export** writes them out as a
+  Markdown document you can hand to someone else.
+
+![The Process tab, with steps linked to machines on the floor](docs/process-panel.png)
+
 ### Cascading
 
 Select one or more machines, then use the **Cascade** panel: choose a copy
@@ -143,3 +172,18 @@ A layout is a JSON document of positioned items:
 Route endpoints are either `{"item": "<id>"}` — docked to a machine and
 recalculated whenever it moves — or a fixed `{"x": …, "y": …}` point. Unknown
 or malformed items are dropped on load rather than breaking the file.
+
+The written process rides along in the same file:
+
+```json
+{
+  "process": [
+    { "id": "s1", "title": "Rough machining — CNC 1",
+      "details": "Load the magazine, run program O1204. 4 min cycle…",
+      "link": "i1" }
+  ]
+}
+```
+
+`link` is the id of the item the step happens at, or `null`. Links pointing at
+items that no longer exist are dropped on load.

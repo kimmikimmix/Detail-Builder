@@ -116,6 +116,12 @@
   </main>
 
   <aside class="sidebar right">
+    <div class="tabs" id="sideTabs">
+      <button class="tab active" data-pane="design">Design</button>
+      <button class="tab" data-pane="process">Process<span class="badge hidden"></span></button>
+    </div>
+
+    <div class="pane" id="paneDesign">
     <div class="panel">
       <div class="panel-title">Properties</div>
       <div id="props" class="props"><div class="empty">Select something to edit it.</div></div>
@@ -156,6 +162,26 @@
       <div class="panel-title">Layout stats</div>
       <div id="stats" class="stats"></div>
     </div>
+    </div><!-- /paneDesign -->
+
+    <div class="pane hidden" id="paneProcess">
+      <div class="panel">
+        <div class="panel-title">
+          Process
+          <span class="hint" id="stepCount">no steps yet</span>
+          <button class="title-btn" id="btnWide" title="Widen this panel for writing">&#8596;</button>
+        </div>
+        <div class="btnrow">
+          <button class="btn primary" id="btnAddStep" title="Add an empty step at the end">+ Step</button>
+          <button class="btn" id="btnStepFromSel" title="Add a step already linked to the selected machine">From selection</button>
+          <button class="btn" id="btnStepsMd" title="Download the written process as a Markdown file">Export</button>
+        </div>
+        <p class="note">Write the process in order. Link a step to a machine and its
+          number appears on that machine in the layout — click the number badge in a
+          step to jump to it.</p>
+      </div>
+      <div class="panel grow steps" id="stepList"></div>
+    </div>
   </aside>
 </div>
 
@@ -182,6 +208,24 @@
         </ul>
       </section>
       <section>
+        <h3>Naming machines</h3>
+        <ul>
+          <li>Double-click a machine on the canvas — or select it and press <kbd>Enter</kbd> or <kbd>F2</kbd> — and type the name in place.</li>
+          <li>Or select it and edit <b>Name</b> at the top of the Properties panel.</li>
+          <li>Select several machines and use <b>Name all</b> to number a whole run at once: typing <code>Press</code> gives Press 1, Press 2, Press 3… ordered left to right.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Writing the process</h3>
+        <ul>
+          <li>Switch the right-hand panel to <b>Process</b> and press <b>+ Step</b> for each step, in order. Every step has a title and a details box for as much as you want to write.</li>
+          <li><b>From selection</b> adds a step already linked to whatever machine is selected.</li>
+          <li>A linked step's number appears on that machine in the layout; click the number in the step to jump to it, and the ✕ on the chip unlinks it.</li>
+          <li>Reorder with ↑ ↓, copy a step with ⧉, remove it with ✕. Use ↔ in the panel header to widen the panel for writing.</li>
+          <li>Steps are saved inside the layout file. <b>Export</b> writes them out as a Markdown document.</li>
+        </ul>
+      </section>
+      <section>
         <h3>Editing</h3>
         <ul>
           <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> Undo &middot; Redo</li>
@@ -189,8 +233,7 @@
           <li><kbd>Ctrl</kbd>+<kbd>A</kbd> Select all &middot; <kbd>Delete</kbd> Remove &middot; <kbd>Esc</kbd> Deselect</li>
           <li>Arrow keys nudge (hold <kbd>Shift</kbd> for 1 m steps)</li>
           <li><kbd>Shift</kbd>+click to add to the selection &middot; drag on empty space to marquee-select</li>
-          <li>Double-click a machine, zone or label to rename it</li>
-          <li><kbd>[</kbd> / <kbd>]</kbd> send backward / bring forward</li>
+                    <li><kbd>[</kbd> / <kbd>]</kbd> send backward / bring forward</li>
         </ul>
       </section>
       <section>

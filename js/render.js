@@ -194,6 +194,7 @@
 
   function drawMachine(ctx, state, m) {
     const zoom = state.cam.zoom;
+    drawStepBadge(ctx, state, m);
     withRotation(ctx, m, () => {
       if (m.clearance > 0) {
         ctx.save();
@@ -255,6 +256,35 @@
       }
       ctx.restore();
     });
+  }
+
+  /* Machines named in the written process carry their step numbers. */
+  function drawStepBadge(ctx, state, m) {
+    if (!state.showLabels) return;
+    const nums = M.stepsFor(state.doc, m.id);
+    if (!nums.length) return;
+    const zoom = state.cam.zoom;
+    if (zoom < 8) return;
+
+    const text = nums.length > 2 ? nums[0] + '+' : nums.join(',');
+    const corner = G.rectCorners(m)[1];
+
+    ctx.save();
+    ctx.translate(corner.x, corner.y);
+    ctx.scale(1 / zoom, 1 / zoom);
+    ctx.font = '700 10px Inter, "Segoe UI", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const w = Math.max(15, ctx.measureText(text).width + 9);
+    roundRect(ctx, -w / 2, -7.5, w, 15, 7.5);
+    ctx.fillStyle = C.accent;
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(text, 0, 0.5);
+    ctx.restore();
   }
 
   function drawZone(ctx, state, z) {

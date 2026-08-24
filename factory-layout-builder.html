@@ -102,7 +102,55 @@ button, input, select { font: inherit; color: inherit; }
   overflow-x: hidden;
 }
 .sidebar.left  { border-right: 1px solid var(--line); }
-.sidebar.right { border-left: 1px solid var(--line); width: 258px; }
+.sidebar.right {
+  border-left: 1px solid var(--line);
+  width: 278px;
+  overflow: hidden;
+  transition: width .15s ease;
+}
+.sidebar.right.wide { width: 460px; }
+
+/* ---------- right sidebar tabs ---------- */
+.tabs {
+  display: flex;
+  flex: none;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+.tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 9px 4px;
+  cursor: pointer;
+  color: var(--text-dim2);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: .3px;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); background: var(--bg-2); }
+.tab .badge {
+  display: inline-block;
+  min-width: 16px;
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--line-2);
+  color: var(--text);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.tab.active .badge { background: var(--accent-2); }
+
+.pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
 
 .panel { border-bottom: 1px solid var(--line); padding: 10px; }
 .panel.grow { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; border-bottom: none; }
@@ -119,6 +167,17 @@ button, input, select { font: inherit; color: inherit; }
   gap: 6px;
 }
 .panel-title .hint { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 10px; opacity: .8; }
+.panel-title .title-btn {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text-dim2);
+  cursor: pointer;
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.panel-title .title-btn:hover { color: var(--text); border-color: var(--line-2); background: var(--bg-3); }
 
 /* ---------- tools ---------- */
 .toolgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
@@ -317,6 +376,118 @@ code { background: var(--bg-3); padding: 1px 4px; border-radius: 3px; font-size:
   .sidebar.right { width: 226px; }
   :root { --sidebar-w: 200px; }
 }
+
+/* ---------- process steps ---------- */
+.steps { display: flex; flex-direction: column; gap: 7px; padding: 10px; overflow-y: auto; }
+.steps .empty {
+  color: var(--text-dim2);
+  font-style: italic;
+  text-align: center;
+  padding: 18px 8px;
+  line-height: 1.6;
+}
+
+.step {
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 7px;
+  display: grid;
+  /* Without this the textarea's intrinsic width blows the column open. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+.step:focus-within { border-color: var(--accent); }
+.step.linked-active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-2) inset; }
+
+.step-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.step-num {
+  flex: none;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--line-2);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.step-num.has-link { background: var(--accent-2); cursor: pointer; }
+.step-num.has-link:hover { background: var(--accent); }
+
+.step-title {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 3px 5px;
+  font-weight: 600;
+}
+.step-title::placeholder { font-weight: 400; color: var(--text-dim2); }
+.step-title:hover { border-color: var(--line-2); }
+.step-title:focus { outline: none; border-color: var(--accent); background: var(--bg); }
+
+.step-foot { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.step-tools { display: flex; gap: 2px; flex: none; }
+.step-tools button {
+  width: 21px;
+  height: 21px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-dim2);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+.step-tools button:hover { background: var(--bg); color: var(--text); border-color: var(--line-2); }
+.step-tools button:disabled { opacity: .25; cursor: default; background: transparent; border-color: transparent; }
+.step-tools button.del:hover { color: #ffb4b1; border-color: var(--danger); }
+
+.step-details {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 5px 6px;
+  color: var(--text-dim);
+  resize: vertical;
+  line-height: 1.5;
+  font-family: inherit;
+}
+.step-details:focus { outline: none; border-color: var(--accent); color: var(--text); }
+.step-details::placeholder { color: var(--text-dim2); }
+
+.step-link {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px dashed var(--line-2);
+  border-radius: 5px;
+  padding: 3px 7px;
+  color: var(--text-dim2);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-size: 11.5px;
+}
+.step-link:hover { border-color: var(--accent); color: var(--text); }
+.step-link:disabled { opacity: .45; cursor: default; }
+.step-link:disabled:hover { border-color: var(--line-2); color: var(--text-dim2); }
+.step-link.is-linked { border-style: solid; color: var(--text-dim); }
+.step-link .dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.step-link .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step-link .clear { color: var(--text-dim2); font-size: 13px; }
+.step-link .clear:hover { color: #ffb4b1; }
 </style>
 </head>
 <body>
@@ -429,6 +600,12 @@ code { background: var(--bg-3); padding: 1px 4px; border-radius: 3px; font-size:
   </main>
 
   <aside class="sidebar right">
+    <div class="tabs" id="sideTabs">
+      <button class="tab active" data-pane="design">Design</button>
+      <button class="tab" data-pane="process">Process<span class="badge hidden"></span></button>
+    </div>
+
+    <div class="pane" id="paneDesign">
     <div class="panel">
       <div class="panel-title">Properties</div>
       <div id="props" class="props"><div class="empty">Select something to edit it.</div></div>
@@ -469,6 +646,26 @@ code { background: var(--bg-3); padding: 1px 4px; border-radius: 3px; font-size:
       <div class="panel-title">Layout stats</div>
       <div id="stats" class="stats"></div>
     </div>
+    </div><!-- /paneDesign -->
+
+    <div class="pane hidden" id="paneProcess">
+      <div class="panel">
+        <div class="panel-title">
+          Process
+          <span class="hint" id="stepCount">no steps yet</span>
+          <button class="title-btn" id="btnWide" title="Widen this panel for writing">&#8596;</button>
+        </div>
+        <div class="btnrow">
+          <button class="btn primary" id="btnAddStep" title="Add an empty step at the end">+ Step</button>
+          <button class="btn" id="btnStepFromSel" title="Add a step already linked to the selected machine">From selection</button>
+          <button class="btn" id="btnStepsMd" title="Download the written process as a Markdown file">Export</button>
+        </div>
+        <p class="note">Write the process in order. Link a step to a machine and its
+          number appears on that machine in the layout — click the number badge in a
+          step to jump to it.</p>
+      </div>
+      <div class="panel grow steps" id="stepList"></div>
+    </div>
   </aside>
 </div>
 
@@ -495,6 +692,24 @@ code { background: var(--bg-3); padding: 1px 4px; border-radius: 3px; font-size:
         </ul>
       </section>
       <section>
+        <h3>Naming machines</h3>
+        <ul>
+          <li>Double-click a machine on the canvas — or select it and press <kbd>Enter</kbd> or <kbd>F2</kbd> — and type the name in place.</li>
+          <li>Or select it and edit <b>Name</b> at the top of the Properties panel.</li>
+          <li>Select several machines and use <b>Name all</b> to number a whole run at once: typing <code>Press</code> gives Press 1, Press 2, Press 3… ordered left to right.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Writing the process</h3>
+        <ul>
+          <li>Switch the right-hand panel to <b>Process</b> and press <b>+ Step</b> for each step, in order. Every step has a title and a details box for as much as you want to write.</li>
+          <li><b>From selection</b> adds a step already linked to whatever machine is selected.</li>
+          <li>A linked step's number appears on that machine in the layout; click the number in the step to jump to it, and the ✕ on the chip unlinks it.</li>
+          <li>Reorder with ↑ ↓, copy a step with ⧉, remove it with ✕. Use ↔ in the panel header to widen the panel for writing.</li>
+          <li>Steps are saved inside the layout file. <b>Export</b> writes them out as a Markdown document.</li>
+        </ul>
+      </section>
+      <section>
         <h3>Editing</h3>
         <ul>
           <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> Undo &middot; Redo</li>
@@ -502,8 +717,7 @@ code { background: var(--bg-3); padding: 1px 4px; border-radius: 3px; font-size:
           <li><kbd>Ctrl</kbd>+<kbd>A</kbd> Select all &middot; <kbd>Delete</kbd> Remove &middot; <kbd>Esc</kbd> Deselect</li>
           <li>Arrow keys nudge (hold <kbd>Shift</kbd> for 1 m steps)</li>
           <li><kbd>Shift</kbd>+click to add to the selection &middot; drag on empty space to marquee-select</li>
-          <li>Double-click a machine, zone or label to rename it</li>
-          <li><kbd>[</kbd> / <kbd>]</kbd> send backward / bring forward</li>
+                    <li><kbd>[</kbd> / <kbd>]</kbd> send backward / bring forward</li>
         </ul>
       </section>
       <section>
@@ -744,7 +958,23 @@ window.FB = window.FB || {};
     grid: 1,
     unit: 'm',
     items: [],
+    process: [],
   });
+
+  /* A written process step, optionally tied to an item on the floor. */
+  M.step = (title, details, link) => ({
+    id: M.uid(),
+    title: title || '',
+    details: details || '',
+    link: link || null,
+  });
+
+  /* Step numbers (1-based) that point at a given item. */
+  M.stepsFor = (doc, id) => {
+    const out = [];
+    (doc.process || []).forEach((st, i) => { if (st.link === id) out.push(i + 1); });
+    return out;
+  };
 
   /* ---------- factories ---------- */
 
@@ -1039,6 +1269,19 @@ window.FB = window.FB || {};
       const okEnd = (e) => e && (!e.item || seen.has(e.item));
       return okEnd(it.from) && okEnd(it.to);
     });
+
+    if (Array.isArray(raw.process)) {
+      for (const st of raw.process) {
+        if (!st || typeof st !== 'object') continue;
+        const step = M.step(
+          typeof st.title === 'string' ? st.title : '',
+          typeof st.details === 'string' ? st.details : '',
+          typeof st.link === 'string' && seen.has(st.link) ? st.link : null
+        );
+        if (typeof st.id === 'string' && st.id) step.id = st.id;
+        doc.process.push(step);
+      }
+    }
     return doc;
   };
 
@@ -1406,6 +1649,7 @@ window.FB = window.FB || {};
 
   function drawMachine(ctx, state, m) {
     const zoom = state.cam.zoom;
+    drawStepBadge(ctx, state, m);
     withRotation(ctx, m, () => {
       if (m.clearance > 0) {
         ctx.save();
@@ -1467,6 +1711,35 @@ window.FB = window.FB || {};
       }
       ctx.restore();
     });
+  }
+
+  /* Machines named in the written process carry their step numbers. */
+  function drawStepBadge(ctx, state, m) {
+    if (!state.showLabels) return;
+    const nums = M.stepsFor(state.doc, m.id);
+    if (!nums.length) return;
+    const zoom = state.cam.zoom;
+    if (zoom < 8) return;
+
+    const text = nums.length > 2 ? nums[0] + '+' : nums.join(',');
+    const corner = G.rectCorners(m)[1];
+
+    ctx.save();
+    ctx.translate(corner.x, corner.y);
+    ctx.scale(1 / zoom, 1 / zoom);
+    ctx.font = '700 10px Inter, "Segoe UI", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const w = Math.max(15, ctx.measureText(text).width + 9);
+    roundRect(ctx, -w / 2, -7.5, w, 15, 7.5);
+    ctx.fillStyle = C.accent;
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(text, 0, 0.5);
+    ctx.restore();
   }
 
   function drawZone(ctx, state, z) {
@@ -2987,12 +3260,14 @@ window.FB = window.FB || {};
 
     if (!items.length) {
       host.appendChild(el('div', { class: 'empty', text: 'Select something to edit it.' }));
-      host.appendChild(el('p', { class: 'note', text: 'Tip: pick a machine from the palette and drag a box on the canvas.' }));
+      host.appendChild(el('p', { class: 'note', text: 'Tip: double-click a machine on the canvas to rename it, or select it and edit the Name field here.' }));
       return;
     }
 
     if (items.length > 1) {
       host.appendChild(el('div', { class: 'subhead', text: items.length + ' items selected' }));
+      const machines = items.filter((it) => it.type === 'machine');
+      if (machines.length > 1) host.appendChild(renameAllBlock(machines));
       host.appendChild(alignBlock());
       host.appendChild(commonActions(items));
       return;
@@ -3099,6 +3374,26 @@ window.FB = window.FB || {};
     host.appendChild(el('p', { class: 'note', text: R.fmt(M.routeLength(state.doc, r)) + ' m · ' + r.waypoints.length + ' bend' + (r.waypoints.length === 1 ? '' : 's') + ' · double-click the line to add one.' }));
   }
 
+  /* Name a whole run of machines at once: "Press" -> Press 1 … Press N. */
+  function renameAllBlock(machines) {
+    const inp = el('input', { type: 'text', placeholder: 'e.g. Press' });
+    const apply = () => {
+      const base = inp.value.trim();
+      if (!base) return;
+      const ordered = machines.slice().sort((a, b) => (a.x - b.x) || (a.y - b.y));
+      ordered.forEach((m, i) => { m.label = base + ' ' + (i + 1); });
+      app.commit();
+      app.toast('Renamed ' + ordered.length + ' machines');
+      U.refreshProps();
+    };
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') apply(); });
+    return el('div', {}, [
+      el('div', { class: 'subhead', text: 'Name all ' + machines.length + ' machines' }),
+      el('div', { class: 'row' }, [inp, button('Apply', apply, 'primary')]),
+      el('p', { class: 'note', text: 'Numbered left to right, top to bottom.' }),
+    ]);
+  }
+
   /* ---------- align / distribute ---------- */
 
   const ALIGN_ICONS = {
@@ -3189,6 +3484,117 @@ window.FB = window.FB || {};
     }
   };
 
+  /* ---------- process steps ---------- */
+
+  function iconBtn(glyph, title, onClick, cls) {
+    const b = el('button', { title, text: glyph, class: cls || '' });
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  function linkedName(doc, id) {
+    const it = M.byId(doc, id);
+    if (!it) return null;
+    if (it.type === 'machine') return { name: it.label, color: it.color };
+    if (it.type === 'zone') return { name: it.label, color: it.color };
+    if (it.type === 'route') return { name: it.label || 'Route', color: it.color };
+    if (it.type === 'label') return { name: it.text, color: it.color };
+    return { name: it.type, color: '#64748b' };
+  }
+
+  U.refreshProcess = () => {
+    const host = document.getElementById('stepList');
+    if (!host) return;
+    const doc = state.doc;
+    const steps = doc.process || (doc.process = []);
+    host.innerHTML = '';
+
+    const count = document.getElementById('stepCount');
+    if (count) count.textContent = steps.length === 0 ? 'no steps yet'
+      : steps.length + (steps.length === 1 ? ' step' : ' steps');
+    const badge = document.querySelector('.tab[data-pane="process"] .badge');
+    if (badge) {
+      badge.textContent = steps.length ? String(steps.length) : '';
+      badge.classList.toggle('hidden', steps.length === 0);
+    }
+
+    if (!steps.length) {
+      host.appendChild(el('div', { class: 'empty', html: 'No steps yet.<br>Use <b>+ Step</b> to start writing the process.' }));
+      return;
+    }
+
+    steps.forEach((st, i) => host.appendChild(stepCard(st, i, steps)));
+  };
+
+  function stepCard(st, i, steps) {
+    const doc = state.doc;
+    const link = st.link ? linkedName(doc, st.link) : null;
+
+    const num = el('span', {
+      class: 'step-num' + (link ? ' has-link' : ''),
+      text: String(i + 1),
+      title: link ? 'Jump to ' + link.name : 'Step ' + (i + 1),
+    });
+    if (link) num.addEventListener('click', () => app.focusItem(st.link));
+
+    const title = el('input', { class: 'step-title', type: 'text', placeholder: 'Step title' });
+    title.value = st.title;
+    title.addEventListener('input', () => { st.title = title.value; app.invalidate(); });
+    title.addEventListener('change', () => app.commit());
+
+    const details = el('textarea', { class: 'step-details', rows: 3, placeholder: 'What happens here — settings, times, tooling, who does it…' });
+    details.value = st.details;
+    details.addEventListener('input', () => { st.details = details.value; });
+    details.addEventListener('change', () => app.commit());
+
+    const tools = el('div', { class: 'step-tools' }, [
+      iconBtn('↑', 'Move up', () => app.moveStep(i, -1)),
+      iconBtn('↓', 'Move down', () => app.moveStep(i, 1)),
+      iconBtn('⧉', 'Duplicate step', () => app.duplicateStep(i)),
+      iconBtn('✕', 'Delete step', () => app.removeStep(i), 'del'),
+    ]);
+    tools.children[0].disabled = i === 0;
+    tools.children[1].disabled = i === steps.length - 1;
+
+    const linkBtn = el('button', { class: 'step-link' + (link ? ' is-linked' : '') });
+    if (link) {
+      const dot = el('span', { class: 'dot' });
+      dot.style.background = link.color;
+      linkBtn.appendChild(dot);
+      linkBtn.appendChild(el('span', { class: 'name', text: link.name }));
+      linkBtn.appendChild(el('span', { class: 'clear', text: '✕', title: 'Unlink' }));
+      linkBtn.title = 'Click to select it on the layout';
+      linkBtn.addEventListener('click', (e) => {
+        if (e.target.classList.contains('clear')) app.linkStep(i, null);
+        else app.focusItem(st.link);
+      });
+    } else {
+      const sel = state.selection.size === 1 ? M.byId(doc, [...state.selection][0]) : null;
+      linkBtn.appendChild(el('span', { class: 'name', text: sel ? 'Link to ' + (sel.label || sel.text || sel.type) : 'Link to… (select an item first)' }));
+      linkBtn.disabled = !sel;
+      linkBtn.title = 'Ties this step to an item on the layout';
+      linkBtn.addEventListener('click', () => { if (sel) app.linkStep(i, sel.id); });
+    }
+
+    const card = el('div', { class: 'step' + (st.link && state.selection.has(st.link) ? ' linked-active' : '') }, [
+      el('div', { class: 'step-head' }, [num, title]),
+      details,
+      el('div', { class: 'step-foot' }, [linkBtn, tools]),
+    ]);
+    card.dataset.id = st.id;
+    return card;
+  }
+
+  /* Focus a freshly added step so the user can just start typing. */
+  U.focusStep = (index) => {
+    const cards = document.querySelectorAll('#stepList .step');
+    const card = cards[index];
+    if (!card) return;
+    card.scrollIntoView({ block: 'nearest' });
+    const input = card.querySelector('.step-title');
+    if (input) { input.focus(); input.select(); }
+  };
+
   FB.ui = U;
 })(window.FB);
 </script>
@@ -3256,6 +3662,7 @@ window.FB = window.FB || {};
   app.refresh = () => {
     FB.ui.refreshProps();
     FB.ui.refreshStats();
+    FB.ui.refreshProcess();
     app.refreshStatus();
     app.invalidate();
   };
@@ -3345,6 +3752,7 @@ window.FB = window.FB || {};
       for (const r of M.routesFor(state.doc, id)) ids.add(r.id);
     }
     state.doc.items = state.doc.items.filter((it) => !ids.has(it.id));
+    for (const st of (state.doc.process || [])) if (st.link && ids.has(st.link)) st.link = null;
     state.selection.clear();
     app.commit();
     app.refresh();
@@ -3536,6 +3944,101 @@ window.FB = window.FB || {};
     app.toast('Cascaded ' + created.length + ' machine' + (created.length === 1 ? '' : 's'));
   };
 
+  /* ---------- process steps ---------- */
+
+  function steps() {
+    if (!Array.isArray(state.doc.process)) state.doc.process = [];
+    return state.doc.process;
+  }
+
+  app.addStep = (fromSelection) => {
+    const list = steps();
+    const step = M.step();
+    if (fromSelection && state.selection.size === 1) {
+      const it = M.byId(state.doc, [...state.selection][0]);
+      if (it) {
+        step.link = it.id;
+        step.title = it.label || it.text || '';
+      }
+    }
+    list.push(step);
+    app.commit();
+    showPane('process');
+    FB.ui.refreshProcess();
+    FB.ui.focusStep(list.length - 1);
+  };
+
+  app.removeStep = (i) => {
+    const list = steps();
+    if (i < 0 || i >= list.length) return;
+    list.splice(i, 1);
+    app.commit();
+    FB.ui.refreshProcess();
+  };
+
+  app.duplicateStep = (i) => {
+    const list = steps();
+    const src = list[i];
+    if (!src) return;
+    const copy = M.step(src.title, src.details, src.link);
+    list.splice(i + 1, 0, copy);
+    app.commit();
+    FB.ui.refreshProcess();
+    FB.ui.focusStep(i + 1);
+  };
+
+  app.moveStep = (i, dir) => {
+    const list = steps();
+    const j = i + dir;
+    if (j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j], list[i]];
+    app.commit();
+    FB.ui.refreshProcess();
+  };
+
+  app.linkStep = (i, itemId) => {
+    const st = steps()[i];
+    if (!st) return;
+    st.link = itemId;
+    app.commit();
+    FB.ui.refreshProcess();
+  };
+
+  /* Select an item and bring it into view without changing zoom. */
+  app.focusItem = (id) => {
+    const it = M.byId(state.doc, id);
+    if (!it) return;
+    const b = M.bounds(state.doc, it);
+    state.selection = new Set([id]);
+    if (b) {
+      state.cam.x = b.x + b.w / 2 - R.width / 2 / state.cam.zoom;
+      state.cam.y = b.y + b.h / 2 - (R.height - 26) / 2 / state.cam.zoom;
+    }
+    app.refresh();
+  };
+
+  app.exportSteps = () => {
+    const list = steps();
+    if (!list.length) { app.toast('No steps written yet'); return; }
+    const lines = ['# ' + (state.doc.name || 'Factory layout') + ' — process', ''];
+    list.forEach((st, i) => {
+      const host = st.link ? M.byId(state.doc, st.link) : null;
+      const where = host ? '  \n*At: ' + (host.label || host.text || host.type) + '*' : '';
+      lines.push('## ' + (i + 1) + '. ' + (st.title || 'Untitled step') + where);
+      lines.push('');
+      if (st.details.trim()) { lines.push(st.details.trim()); lines.push(''); }
+    });
+    download(new Blob([lines.join('\n')], { type: 'text/markdown' }), slug(state.doc.name) + '-process.md');
+    app.toast('Process exported');
+  };
+
+  function showPane(name) {
+    document.querySelectorAll('#sideTabs .tab').forEach((t) => t.classList.toggle('active', t.dataset.pane === name));
+    document.getElementById('paneDesign').classList.toggle('hidden', name !== 'design');
+    document.getElementById('paneProcess').classList.toggle('hidden', name !== 'process');
+  }
+  app.showPane = showPane;
+
   /* ---------- view ---------- */
 
   app.zoomBy = (factor, centerScreen) => {
@@ -3639,6 +4142,7 @@ window.FB = window.FB || {};
     state.draft = null;
     state.measure = null;
     document.getElementById('docName').value = doc.name;
+    if (!Array.isArray(state.doc.process)) state.doc.process = [];
     H.reset(doc);
     app.zoomFit();
     app.refresh();
@@ -3750,6 +4254,15 @@ window.FB = window.FB || {};
       return;
     }
 
+    if (e.key === 'F2' && state.selection.size === 1) {
+      const it = M.byId(state.doc, [...state.selection][0]);
+      if (it && (it.type === 'machine' || it.type === 'zone' || it.type === 'label')) {
+        e.preventDefault();
+        app.editLabel(it);
+        return;
+      }
+    }
+
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       app.deleteSelection();
@@ -3855,6 +4368,20 @@ window.FB = window.FB || {};
     document.getElementById('btnZoomOut').addEventListener('click', () => app.zoomBy(1 / 1.25));
     document.getElementById('btnZoomReset').addEventListener('click', () => app.zoomBy(26 / state.cam.zoom));
     document.getElementById('btnFit').addEventListener('click', app.zoomFit);
+
+    document.getElementById('sideTabs').addEventListener('click', (e) => {
+      const tab = e.target.closest('.tab');
+      if (tab) showPane(tab.dataset.pane);
+    });
+    document.getElementById('btnAddStep').addEventListener('click', () => app.addStep(false));
+    document.getElementById('btnStepFromSel').addEventListener('click', () => app.addStep(true));
+    document.getElementById('btnStepsMd').addEventListener('click', app.exportSteps);
+    document.getElementById('btnWide').addEventListener('click', () => {
+      const side = document.querySelector('.sidebar.right');
+      side.classList.toggle('wide');
+      /* The canvas keeps its flex width, so re-measure after the transition. */
+      setTimeout(() => { R.resize(); app.invalidate(); }, 180);
+    });
 
     document.getElementById('btnCascade').addEventListener('click', app.cascade);
     document.getElementById('btnSample').addEventListener('click', () => {

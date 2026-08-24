@@ -61,6 +61,7 @@
   app.refresh = () => {
     FB.ui.refreshProps();
     FB.ui.refreshStats();
+    FB.ui.refreshProcess();
     app.refreshStatus();
     app.invalidate();
   };
@@ -150,6 +151,7 @@
       for (const r of M.routesFor(state.doc, id)) ids.add(r.id);
     }
     state.doc.items = state.doc.items.filter((it) => !ids.has(it.id));
+    for (const st of (state.doc.process || [])) if (st.link && ids.has(st.link)) st.link = null;
     state.selection.clear();
     app.commit();
     app.refresh();
@@ -341,6 +343,101 @@
     app.toast('Cascaded ' + created.length + ' machine' + (created.length === 1 ? '' : 's'));
   };
 
+  /* ---------- process steps ---------- */
+
+  function steps() {
+    if (!Array.isArray(state.doc.process)) state.doc.process = [];
+    return state.doc.process;
+  }
+
+  app.addStep = (fromSelection) => {
+    const list = steps();
+    const step = M.step();
+    if (fromSelection && state.selection.size === 1) {
+      const it = M.byId(state.doc, [...state.selection][0]);
+      if (it) {
+        step.link = it.id;
+        step.title = it.label || it.text || '';
+      }
+    }
+    list.push(step);
+    app.commit();
+    showPane('process');
+    FB.ui.refreshProcess();
+    FB.ui.focusStep(list.length - 1);
+  };
+
+  app.removeStep = (i) => {
+    const list = steps();
+    if (i < 0 || i >= list.length) return;
+    list.splice(i, 1);
+    app.commit();
+    FB.ui.refreshProcess();
+  };
+
+  app.duplicateStep = (i) => {
+    const list = steps();
+    const src = list[i];
+    if (!src) return;
+    const copy = M.step(src.title, src.details, src.link);
+    list.splice(i + 1, 0, copy);
+    app.commit();
+    FB.ui.refreshProcess();
+    FB.ui.focusStep(i + 1);
+  };
+
+  app.moveStep = (i, dir) => {
+    const list = steps();
+    const j = i + dir;
+    if (j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j], list[i]];
+    app.commit();
+    FB.ui.refreshProcess();
+  };
+
+  app.linkStep = (i, itemId) => {
+    const st = steps()[i];
+    if (!st) return;
+    st.link = itemId;
+    app.commit();
+    FB.ui.refreshProcess();
+  };
+
+  /* Select an item and bring it into view without changing zoom. */
+  app.focusItem = (id) => {
+    const it = M.byId(state.doc, id);
+    if (!it) return;
+    const b = M.bounds(state.doc, it);
+    state.selection = new Set([id]);
+    if (b) {
+      state.cam.x = b.x + b.w / 2 - R.width / 2 / state.cam.zoom;
+      state.cam.y = b.y + b.h / 2 - (R.height - 26) / 2 / state.cam.zoom;
+    }
+    app.refresh();
+  };
+
+  app.exportSteps = () => {
+    const list = steps();
+    if (!list.length) { app.toast('No steps written yet'); return; }
+    const lines = ['# ' + (state.doc.name || 'Factory layout') + ' — process', ''];
+    list.forEach((st, i) => {
+      const host = st.link ? M.byId(state.doc, st.link) : null;
+      const where = host ? '  \n*At: ' + (host.label || host.text || host.type) + '*' : '';
+      lines.push('## ' + (i + 1) + '. ' + (st.title || 'Untitled step') + where);
+      lines.push('');
+      if (st.details.trim()) { lines.push(st.details.trim()); lines.push(''); }
+    });
+    download(new Blob([lines.join('\n')], { type: 'text/markdown' }), slug(state.doc.name) + '-process.md');
+    app.toast('Process exported');
+  };
+
+  function showPane(name) {
+    document.querySelectorAll('#sideTabs .tab').forEach((t) => t.classList.toggle('active', t.dataset.pane === name));
+    document.getElementById('paneDesign').classList.toggle('hidden', name !== 'design');
+    document.getElementById('paneProcess').classList.toggle('hidden', name !== 'process');
+  }
+  app.showPane = showPane;
+
   /* ---------- view ---------- */
 
   app.zoomBy = (factor, centerScreen) => {
@@ -444,6 +541,7 @@
     state.draft = null;
     state.measure = null;
     document.getElementById('docName').value = doc.name;
+    if (!Array.isArray(state.doc.process)) state.doc.process = [];
     H.reset(doc);
     app.zoomFit();
     app.refresh();
@@ -555,6 +653,15 @@
       return;
     }
 
+    if (e.key === 'F2' && state.selection.size === 1) {
+      const it = M.byId(state.doc, [...state.selection][0]);
+      if (it && (it.type === 'machine' || it.type === 'zone' || it.type === 'label')) {
+        e.preventDefault();
+        app.editLabel(it);
+        return;
+      }
+    }
+
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       app.deleteSelection();
@@ -660,6 +767,20 @@
     document.getElementById('btnZoomOut').addEventListener('click', () => app.zoomBy(1 / 1.25));
     document.getElementById('btnZoomReset').addEventListener('click', () => app.zoomBy(26 / state.cam.zoom));
     document.getElementById('btnFit').addEventListener('click', app.zoomFit);
+
+    document.getElementById('sideTabs').addEventListener('click', (e) => {
+      const tab = e.target.closest('.tab');
+      if (tab) showPane(tab.dataset.pane);
+    });
+    document.getElementById('btnAddStep').addEventListener('click', () => app.addStep(false));
+    document.getElementById('btnStepFromSel').addEventListener('click', () => app.addStep(true));
+    document.getElementById('btnStepsMd').addEventListener('click', app.exportSteps);
+    document.getElementById('btnWide').addEventListener('click', () => {
+      const side = document.querySelector('.sidebar.right');
+      side.classList.toggle('wide');
+      /* The canvas keeps its flex width, so re-measure after the transition. */
+      setTimeout(() => { R.resize(); app.invalidate(); }, 180);
+    });
 
     document.getElementById('btnCascade').addEventListener('click', app.cascade);
     document.getElementById('btnSample').addEventListener('click', () => {

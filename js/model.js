@@ -38,7 +38,23 @@
     grid: 1,
     unit: 'm',
     items: [],
+    process: [],
   });
+
+  /* A written process step, optionally tied to an item on the floor. */
+  M.step = (title, details, link) => ({
+    id: M.uid(),
+    title: title || '',
+    details: details || '',
+    link: link || null,
+  });
+
+  /* Step numbers (1-based) that point at a given item. */
+  M.stepsFor = (doc, id) => {
+    const out = [];
+    (doc.process || []).forEach((st, i) => { if (st.link === id) out.push(i + 1); });
+    return out;
+  };
 
   /* ---------- factories ---------- */
 
@@ -333,6 +349,19 @@
       const okEnd = (e) => e && (!e.item || seen.has(e.item));
       return okEnd(it.from) && okEnd(it.to);
     });
+
+    if (Array.isArray(raw.process)) {
+      for (const st of raw.process) {
+        if (!st || typeof st !== 'object') continue;
+        const step = M.step(
+          typeof st.title === 'string' ? st.title : '',
+          typeof st.details === 'string' ? st.details : '',
+          typeof st.link === 'string' && seen.has(st.link) ? st.link : null
+        );
+        if (typeof st.id === 'string' && st.id) step.id = st.id;
+        doc.process.push(step);
+      }
+    }
     return doc;
   };
 

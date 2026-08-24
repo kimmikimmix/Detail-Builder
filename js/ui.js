@@ -132,12 +132,14 @@
 
     if (!items.length) {
       host.appendChild(el('div', { class: 'empty', text: 'Select something to edit it.' }));
-      host.appendChild(el('p', { class: 'note', text: 'Tip: pick a machine from the palette and drag a box on the canvas.' }));
+      host.appendChild(el('p', { class: 'note', text: 'Tip: double-click a machine on the canvas to rename it, or select it and edit the Name field here.' }));
       return;
     }
 
     if (items.length > 1) {
       host.appendChild(el('div', { class: 'subhead', text: items.length + ' items selected' }));
+      const machines = items.filter((it) => it.type === 'machine');
+      if (machines.length > 1) host.appendChild(renameAllBlock(machines));
       host.appendChild(alignBlock());
       host.appendChild(commonActions(items));
       return;
@@ -244,6 +246,26 @@
     host.appendChild(el('p', { class: 'note', text: R.fmt(M.routeLength(state.doc, r)) + ' m · ' + r.waypoints.length + ' bend' + (r.waypoints.length === 1 ? '' : 's') + ' · double-click the line to add one.' }));
   }
 
+  /* Name a whole run of machines at once: "Press" -> Press 1 … Press N. */
+  function renameAllBlock(machines) {
+    const inp = el('input', { type: 'text', placeholder: 'e.g. Press' });
+    const apply = () => {
+      const base = inp.value.trim();
+      if (!base) return;
+      const ordered = machines.slice().sort((a, b) => (a.x - b.x) || (a.y - b.y));
+      ordered.forEach((m, i) => { m.label = base + ' ' + (i + 1); });
+      app.commit();
+      app.toast('Renamed ' + ordered.length + ' machines');
+      U.refreshProps();
+    };
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') apply(); });
+    return el('div', {}, [
+      el('div', { class: 'subhead', text: 'Name all ' + machines.length + ' machines' }),
+      el('div', { class: 'row' }, [inp, button('Apply', apply, 'primary')]),
+      el('p', { class: 'note', text: 'Numbered left to right, top to bottom.' }),
+    ]);
+  }
+
   /* ---------- align / distribute ---------- */
 
   const ALIGN_ICONS = {
@@ -332,6 +354,117 @@
       }
       host.appendChild(bars);
     }
+  };
+
+  /* ---------- process steps ---------- */
+
+  function iconBtn(glyph, title, onClick, cls) {
+    const b = el('button', { title, text: glyph, class: cls || '' });
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  function linkedName(doc, id) {
+    const it = M.byId(doc, id);
+    if (!it) return null;
+    if (it.type === 'machine') return { name: it.label, color: it.color };
+    if (it.type === 'zone') return { name: it.label, color: it.color };
+    if (it.type === 'route') return { name: it.label || 'Route', color: it.color };
+    if (it.type === 'label') return { name: it.text, color: it.color };
+    return { name: it.type, color: '#64748b' };
+  }
+
+  U.refreshProcess = () => {
+    const host = document.getElementById('stepList');
+    if (!host) return;
+    const doc = state.doc;
+    const steps = doc.process || (doc.process = []);
+    host.innerHTML = '';
+
+    const count = document.getElementById('stepCount');
+    if (count) count.textContent = steps.length === 0 ? 'no steps yet'
+      : steps.length + (steps.length === 1 ? ' step' : ' steps');
+    const badge = document.querySelector('.tab[data-pane="process"] .badge');
+    if (badge) {
+      badge.textContent = steps.length ? String(steps.length) : '';
+      badge.classList.toggle('hidden', steps.length === 0);
+    }
+
+    if (!steps.length) {
+      host.appendChild(el('div', { class: 'empty', html: 'No steps yet.<br>Use <b>+ Step</b> to start writing the process.' }));
+      return;
+    }
+
+    steps.forEach((st, i) => host.appendChild(stepCard(st, i, steps)));
+  };
+
+  function stepCard(st, i, steps) {
+    const doc = state.doc;
+    const link = st.link ? linkedName(doc, st.link) : null;
+
+    const num = el('span', {
+      class: 'step-num' + (link ? ' has-link' : ''),
+      text: String(i + 1),
+      title: link ? 'Jump to ' + link.name : 'Step ' + (i + 1),
+    });
+    if (link) num.addEventListener('click', () => app.focusItem(st.link));
+
+    const title = el('input', { class: 'step-title', type: 'text', placeholder: 'Step title' });
+    title.value = st.title;
+    title.addEventListener('input', () => { st.title = title.value; app.invalidate(); });
+    title.addEventListener('change', () => app.commit());
+
+    const details = el('textarea', { class: 'step-details', rows: 3, placeholder: 'What happens here — settings, times, tooling, who does it…' });
+    details.value = st.details;
+    details.addEventListener('input', () => { st.details = details.value; });
+    details.addEventListener('change', () => app.commit());
+
+    const tools = el('div', { class: 'step-tools' }, [
+      iconBtn('↑', 'Move up', () => app.moveStep(i, -1)),
+      iconBtn('↓', 'Move down', () => app.moveStep(i, 1)),
+      iconBtn('⧉', 'Duplicate step', () => app.duplicateStep(i)),
+      iconBtn('✕', 'Delete step', () => app.removeStep(i), 'del'),
+    ]);
+    tools.children[0].disabled = i === 0;
+    tools.children[1].disabled = i === steps.length - 1;
+
+    const linkBtn = el('button', { class: 'step-link' + (link ? ' is-linked' : '') });
+    if (link) {
+      const dot = el('span', { class: 'dot' });
+      dot.style.background = link.color;
+      linkBtn.appendChild(dot);
+      linkBtn.appendChild(el('span', { class: 'name', text: link.name }));
+      linkBtn.appendChild(el('span', { class: 'clear', text: '✕', title: 'Unlink' }));
+      linkBtn.title = 'Click to select it on the layout';
+      linkBtn.addEventListener('click', (e) => {
+        if (e.target.classList.contains('clear')) app.linkStep(i, null);
+        else app.focusItem(st.link);
+      });
+    } else {
+      const sel = state.selection.size === 1 ? M.byId(doc, [...state.selection][0]) : null;
+      linkBtn.appendChild(el('span', { class: 'name', text: sel ? 'Link to ' + (sel.label || sel.text || sel.type) : 'Link to… (select an item first)' }));
+      linkBtn.disabled = !sel;
+      linkBtn.title = 'Ties this step to an item on the layout';
+      linkBtn.addEventListener('click', () => { if (sel) app.linkStep(i, sel.id); });
+    }
+
+    const card = el('div', { class: 'step' + (st.link && state.selection.has(st.link) ? ' linked-active' : '') }, [
+      el('div', { class: 'step-head' }, [num, title]),
+      details,
+      el('div', { class: 'step-foot' }, [linkBtn, tools]),
+    ]);
+    card.dataset.id = st.id;
+    return card;
+  }
+
+  /* Focus a freshly added step so the user can just start typing. */
+  U.focusStep = (index) => {
+    const cards = document.querySelectorAll('#stepList .step');
+    const card = cards[index];
+    if (!card) return;
+    card.scrollIntoView({ block: 'nearest' });
+    const input = card.querySelector('.step-title');
+    if (input) { input.focus(); input.select(); }
   };
 
   FB.ui = U;
