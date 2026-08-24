@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Factory Layout Builder</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" class="brand-icon" aria-hidden="true">
+      <path d="M3 20V10l5 3V10l5 3V4h3v16z"/>
+    </svg>
+    <input id="docName" class="doc-name" value="Untitled Factory" spellcheck="false" aria-label="Layout name">
+  </div>
+
+  <div class="topbar-group">
+    <button class="btn" id="btnNew" title="New layout">New</button>
+    <button class="btn" id="btnOpen" title="Open a .factory.json file">Open</button>
+    <button class="btn" id="btnSave" title="Download layout as JSON">Save</button>
+    <button class="btn" id="btnPng" title="Export a PNG image">PNG</button>
+    <input type="file" id="fileInput" accept=".json,application/json" hidden>
+  </div>
+
+  <div class="topbar-group">
+    <button class="btn icon" id="btnUndo" title="Undo (Ctrl+Z)">
+      <svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9h9a6 6 0 0 1 0 12h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    <button class="btn icon" id="btnRedo" title="Redo (Ctrl+Shift+Z)">
+      <svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 9h-9a6 6 0 0 0 0 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+
+  <div class="topbar-group">
+    <label class="toggle"><input type="checkbox" id="chkGrid" checked><span>Grid</span></label>
+    <label class="toggle"><input type="checkbox" id="chkSnap" checked><span>Snap</span></label>
+    <label class="toggle"><input type="checkbox" id="chkLabels" checked><span>Labels</span></label>
+  </div>
+
+  <div class="topbar-group zoomgroup">
+    <button class="btn icon" id="btnZoomOut" title="Zoom out">&minus;</button>
+    <button class="btn zoomval" id="btnZoomReset" title="Reset zoom to 100%">100%</button>
+    <button class="btn icon" id="btnZoomIn" title="Zoom in">+</button>
+    <button class="btn" id="btnFit" title="Zoom to fit (F)">Fit</button>
+  </div>
+
+  <div class="topbar-group right">
+    <button class="btn" id="btnSample" title="Load an example layout">Example</button>
+    <button class="btn" id="btnHelp" title="Keyboard shortcuts (?)">?</button>
+  </div>
+</header>
+
+<div class="workspace">
+
+  <aside class="sidebar left">
+    <div class="panel">
+      <div class="panel-title">Tools</div>
+      <div class="toolgrid" id="toolGrid">
+        <button class="tool" data-tool="select" title="Select / move (V)">
+          <svg viewBox="0 0 24 24"><path d="m5 3 14 8-6 1.6L9.7 19z" fill="currentColor"/></svg><span>Select</span>
+        </button>
+        <button class="tool" data-tool="machine" title="Draw machine (M) — drag a box">
+          <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Machine</span>
+        </button>
+        <button class="tool" data-tool="wall" title="Wall (W) — click to add points, Enter/dbl-click to finish">
+          <svg viewBox="0 0 24 24"><path d="M3 18h8V8h10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Wall</span>
+        </button>
+        <button class="tool" data-tool="room" title="Room (R) — drag a rectangle of walls">
+          <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" fill="none" stroke="currentColor" stroke-width="2.5"/></svg><span>Room</span>
+        </button>
+        <button class="tool" data-tool="route" title="Route (E) — click machine, then machine">
+          <svg viewBox="0 0 24 24"><path d="M4 17h6a4 4 0 0 0 4-4V9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="m10.5 5.5 3.5-3 3.5 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Route</span>
+        </button>
+        <button class="tool" data-tool="zone" title="Zone (Z) — drag an area">
+          <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2.5"/></svg><span>Zone</span>
+        </button>
+        <button class="tool" data-tool="text" title="Text label (T)">
+          <svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Text</span>
+        </button>
+        <button class="tool" data-tool="measure" title="Measure distance (K)">
+          <svg viewBox="0 0 24 24"><path d="M3 14 14 3l7 7L10 21z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="m7 10 2 2m2-4 2 2m2-4 2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Measure</span>
+        </button>
+        <button class="tool" data-tool="pan" title="Pan (H, or hold Space / middle mouse)">
+          <svg viewBox="0 0 24 24"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V12m0-1a1.5 1.5 0 0 1 3 0v4a6 6 0 0 1-6 6h-1.2a5 5 0 0 1-3.9-1.9L6 17.5 9 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Pan</span>
+        </button>
+      </div>
+      <label class="check" style="margin-top:8px" title="Stay in the current drawing tool instead of returning to Select">
+        <input type="checkbox" id="chkSticky"> Keep tool active
+      </label>
+    </div>
+
+    <div class="panel grow">
+      <div class="panel-title">
+        Machine palette
+        <span class="hint">click, then drag on canvas</span>
+      </div>
+      <div class="palette" id="palette"></div>
+    </div>
+  </aside>
+
+  <main class="canvas-wrap" id="canvasWrap">
+    <canvas id="canvas"></canvas>
+    <input id="inlineEditor" class="inline-editor hidden" spellcheck="false">
+    <div class="statusbar">
+      <span id="statCoords">0.0, 0.0 m</span>
+      <span class="sep"></span>
+      <span id="statTool">Select</span>
+      <span class="sep"></span>
+      <span id="statSel">Nothing selected</span>
+      <span class="spacer"></span>
+      <span id="statHint"></span>
+    </div>
+    <div class="toast" id="toast"></div>
+  </main>
+
+  <aside class="sidebar right">
+    <div class="panel">
+      <div class="panel-title">Properties</div>
+      <div id="props" class="props"><div class="empty">Select something to edit it.</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Cascade machines</div>
+      <div class="props">
+        <div class="row">
+          <label>Copies</label>
+          <input type="number" id="cascCount" value="3" min="1" max="200">
+        </div>
+        <div class="row">
+          <label>Direction</label>
+          <select id="cascDir">
+            <option value="right">Right &rarr;</option>
+            <option value="down">Down &darr;</option>
+            <option value="left">Left &larr;</option>
+            <option value="up">Up &uarr;</option>
+          </select>
+        </div>
+        <div class="row">
+          <label>Gap (m)</label>
+          <input type="number" id="cascGap" value="1.5" step="0.5">
+        </div>
+        <div class="row">
+          <label>Offset (m)</label>
+          <input type="number" id="cascOffset" value="0" step="0.5" title="Perpendicular stagger per copy">
+        </div>
+        <label class="check"><input type="checkbox" id="cascConnect" checked> Connect with routes</label>
+        <label class="check"><input type="checkbox" id="cascNumber" checked> Number the copies</label>
+        <button class="btn primary wide" id="btnCascade">Cascade selection</button>
+        <p class="note">Select one or more machines, then cascade to build a line or cell.</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Layout stats</div>
+      <div id="stats" class="stats"></div>
+    </div>
+  </aside>
+</div>
+
+<div class="modal hidden" id="helpModal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2>Shortcuts &amp; how it works</h2>
+      <button class="btn icon" id="btnHelpClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <section>
+        <h3>Tools</h3>
+        <ul>
+          <li><kbd>V</kbd> Select &middot; <kbd>M</kbd> Machine &middot; <kbd>W</kbd> Wall &middot; <kbd>R</kbd> Room &middot; <kbd>E</kbd> Route &middot; <kbd>Z</kbd> Zone &middot; <kbd>T</kbd> Text &middot; <kbd>K</kbd> Measure &middot; <kbd>H</kbd> Pan</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Drawing</h3>
+        <ul>
+          <li><b>Machine</b> — pick a type in the palette, then drag a box. A plain click drops the default size.</li>
+          <li><b>Wall</b> — click for each corner, <kbd>Enter</kbd> or double-click to finish, <kbd>Esc</kbd> to cancel. Hold <kbd>Shift</kbd> to lock to 45&deg;.</li>
+          <li><b>Route</b> — click the source machine, click waypoints if you want them, click the target machine. Routes stay attached when machines move.</li>
+          <li><b>Cascade</b> — select machines and use the cascade panel to repeat them into a line, optionally wired up with routes.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Editing</h3>
+        <ul>
+          <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> Undo &middot; Redo</li>
+          <li><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd> / <kbd>Ctrl</kbd>+<kbd>D</kbd> Copy &middot; Paste &middot; Duplicate</li>
+          <li><kbd>Ctrl</kbd>+<kbd>A</kbd> Select all &middot; <kbd>Delete</kbd> Remove &middot; <kbd>Esc</kbd> Deselect</li>
+          <li>Arrow keys nudge (hold <kbd>Shift</kbd> for 1 m steps)</li>
+          <li><kbd>Shift</kbd>+click to add to the selection &middot; drag on empty space to marquee-select</li>
+          <li>Double-click a machine, zone or label to rename it</li>
+          <li><kbd>[</kbd> / <kbd>]</kbd> send backward / bring forward</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Navigating</h3>
+        <ul>
+          <li>Scroll to zoom, middle-drag or hold <kbd>Space</kbd> to pan, <kbd>F</kbd> to fit everything on screen</li>
+          <li>Hold <kbd>Alt</kbd> while dragging to bypass grid snapping</li>
+        </ul>
+      </section>
+      <p class="note">Your work is autosaved in this browser. Use <b>Save</b> for a portable <code>.json</code> file.</p>
+    </div>
+  </div>
+</div>
+
+<script src="js/geometry.js"></script>
+<script src="js/model.js"></script>
+<script src="js/history.js"></script>
+<script src="js/render.js"></script>
+<script src="js/tools.js"></script>
+<script src="js/sample.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
