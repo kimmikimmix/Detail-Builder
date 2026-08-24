@@ -4,19 +4,39 @@ A browser-based tool for drawing factory floor layouts: drag out machines, wire
 them together with material-flow routes, cascade a machine into a whole line,
 and enclose it all with walls and zones.
 
-No build step, no dependencies, no server — open `index.html` in a browser.
+No build step, no dependencies, no server. Grab the single-file build
+`factory-layout-builder.html` and double-click it, or open `index.html` from a
+full checkout.
 
 ![The builder with the example plant loaded](docs/screenshot.png)
 
 ## Running it
 
+**One file, nothing else needed** — download `factory-layout-builder.html` and
+double-click it. Everything (styles, scripts, the example plant) is inlined.
+
+**From the repo** — `index.html` loads `css/` and `js/` from alongside it, so
+keep the whole folder together:
+
 ```
-git clone <this repo>
+git clone https://github.com/kimmikimmix/Detail-Builder.git
 cd Detail-Builder
+git checkout claude/factory-layout-builder-1kqv53
 open index.html          # macOS — or just double-click the file
 ```
 
+> Saving `index.html` on its own (right-click → Save as, or downloading the
+> single file from GitHub) gives you an unstyled page of plain text and
+> buttons: the browser can't find `css/style.css` or the `js/` files. Use the
+> standalone file above, or keep the folder intact.
+
 Any static server works too, e.g. `npx http-server -p 8080 .`
+
+After editing anything under `css/` or `js/`, regenerate the standalone file:
+
+```
+node tools/build-standalone.js
+```
 
 ## What you can draw
 
@@ -83,16 +103,18 @@ and **PNG** exports the whole floor as an image. **Example** loads a worked
 ## Project layout
 
 ```
-index.html          markup and panel scaffolding
-css/style.css       all styling
-js/geometry.js      vector maths — rotation, hit tests, polylines
-js/model.js         the document: item factories, route paths, (de)serialisation
-js/history.js       snapshot undo/redo
-js/render.js        canvas drawing and PNG export
-js/tools.js         pointer interaction for every tool
-js/sample.js        the example plant
-js/ui.js            palette, properties panel, stats
-js/app.js           state, actions, keyboard, persistence, bootstrap
+index.html                     markup and panel scaffolding
+factory-layout-builder.html    generated single-file build (do not edit)
+tools/build-standalone.js      inlines everything into that file
+css/style.css                  all styling
+js/geometry.js                 vector maths — rotation, hit tests, polylines
+js/model.js                    the document: item factories, route paths, (de)serialisation
+js/history.js                  snapshot undo/redo
+js/render.js                   canvas drawing and PNG export
+js/tools.js                    pointer interaction for every tool
+js/sample.js                   the example plant
+js/ui.js                       palette, properties panel, stats
+js/app.js                      state, actions, keyboard, persistence, bootstrap
 ```
 
 Plain ES5-compatible scripts sharing a `window.FB` namespace — deliberately no
