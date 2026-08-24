@@ -199,6 +199,15 @@ button, input, select { font: inherit; color: inherit; }
 
 /* ---------- palette ---------- */
 .palette { overflow-y: auto; display: grid; gap: 4px; padding-right: 2px; min-height: 0; }
+.pal-empty {
+  color: var(--text-dim2);
+  font-size: 11.5px;
+  line-height: 1.6;
+  padding: 10px 4px;
+  text-align: center;
+}
+.pal-empty b { color: var(--text-dim); display: block; margin-bottom: 3px; }
+
 .pal-item {
   display: flex;
   align-items: center;
@@ -214,6 +223,22 @@ button, input, select { font: inherit; color: inherit; }
 .pal-swatch { width: 15px; height: 15px; border-radius: 3px; flex: none; box-shadow: inset 0 0 0 1px rgba(255,255,255,.22); }
 .pal-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pal-size { font-size: 10px; color: var(--text-dim2); font-variant-numeric: tabular-nums; }
+.pal-edit {
+  flex: none;
+  width: 19px;
+  height: 19px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim2);
+  cursor: pointer;
+  opacity: 0;
+}
+.pal-item:hover .pal-edit, .pal-item.active .pal-edit { opacity: 1; }
+.pal-edit:hover { background: var(--bg); color: var(--text); border-color: var(--line-2); }
+.pal-edit svg { width: 11px; height: 11px; }
 
 /* ---------- canvas ---------- */
 .canvas-wrap { flex: 1; position: relative; overflow: hidden; background: #eef1f5; }
@@ -332,6 +357,7 @@ button, input, select { font: inherit; color: inherit; }
   z-index: 50;
   padding: 20px;
 }
+.modal-card.narrow { width: min(400px, 100%); }
 .modal-card {
   background: var(--bg-2);
   border: 1px solid var(--line-2);
@@ -577,8 +603,8 @@ code { background: var(--bg-3); padding: 1px 4px; border-radius: 3px; font-size:
 
     <div class="panel grow">
       <div class="panel-title">
-        Machine palette
-        <span class="hint">click, then drag on canvas</span>
+        Machine types
+        <button class="title-btn" id="btnNewType" title="Define a new machine type">+ New</button>
       </div>
       <div class="palette" id="palette"></div>
     </div>
@@ -669,6 +695,42 @@ code { background: var(--bg-3); padding: 1px 4px; border-radius: 3px; font-size:
   </aside>
 </div>
 
+<div class="modal hidden" id="typeModal">
+  <div class="modal-card narrow">
+    <div class="modal-head">
+      <h2 id="typeModalTitle">New machine type</h2>
+      <button class="btn icon" id="btnTypeClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="props">
+        <div class="row">
+          <label>Name</label>
+          <input type="text" id="typeName" placeholder="e.g. Haas VF-2, Weld bench, Pallet rack" spellcheck="false">
+        </div>
+        <div class="row two">
+          <label>Size (m)</label>
+          <input type="number" id="typeW" step="0.5" min="0.2" title="Width in metres">
+          <input type="number" id="typeH" step="0.5" min="0.2" title="Depth in metres">
+        </div>
+        <div class="row">
+          <label>Colour</label>
+          <input type="color" id="typeColor">
+        </div>
+        <label class="check hidden" id="typeApplyRow">
+          <input type="checkbox" id="typeApply"> Apply the colour and size to the
+          <span id="typeUseCount">0</span> machines already using this type
+        </label>
+        <div class="btnrow">
+          <button class="btn primary" id="btnTypeSave">Save type</button>
+          <button class="btn danger hidden" id="btnTypeDelete">Delete type</button>
+        </div>
+        <p class="note" id="typeNote">Types are saved inside the layout, so a file always
+          carries the machines it was drawn with.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal hidden" id="helpModal">
   <div class="modal-card">
     <div class="modal-head">
@@ -685,9 +747,10 @@ code { background: var(--bg-3); padding: 1px 4px; border-radius: 3px; font-size:
       <section>
         <h3>Drawing</h3>
         <ul>
-          <li><b>Machine</b> — pick a type in the palette, then drag a box. A plain click drops the default size.</li>
+          <li><b>Machine</b> — pick one of your types, then drag a box. A plain click drops that type's default size. With no type selected you get a plain box you can name yourself.</li>
+          <li><b>Machine types</b> — the palette starts empty; <b>+ New</b> defines a type (name, default size, colour), and clicking the pencil edits or deletes one. Machines keep their own size and colour, so editing a type only changes what you place next unless you tick <i>apply to existing</i>.</li>
           <li><b>Wall</b> — click for each corner, <kbd>Enter</kbd> or double-click to finish, <kbd>Esc</kbd> to cancel. Hold <kbd>Shift</kbd> to lock to 45&deg;.</li>
-          <li><b>Route</b> — click the source machine, click waypoints if you want them, click the target machine. Routes stay attached when machines move.</li>
+          <li><b>Route</b> — drag from one machine to another for a one-way arrow, or click the source then the target. Click empty space to add a bend; <b>double-click</b>, <kbd>Enter</kbd> or right-click ends a route anywhere, machine or not. Routes stay attached when machines move.</li>
           <li><b>Cascade</b> — select machines and use the cascade panel to repeat them into a line, optionally wired up with routes.</li>
         </ul>
       </section>
@@ -927,25 +990,13 @@ window.FB = window.FB || {};
 
   M.VERSION = 1;
 
-  /* Machine catalogue. Sizes are in metres. */
-  M.KINDS = {
-    cnc:      { name: 'CNC Machine',      w: 3,   h: 2,   color: '#3b82f6', glyph: 'CNC' },
-    lathe:    { name: 'Lathe',            w: 2.5, h: 1.5, color: '#0ea5e9', glyph: 'LTH' },
-    press:    { name: 'Press',            w: 2,   h: 2,   color: '#6366f1', glyph: 'PRS' },
-    molder:   { name: 'Injection Molder', w: 4,   h: 2,   color: '#8b5cf6', glyph: 'IMM' },
-    robot:    { name: 'Robot Cell',       w: 3,   h: 3,   color: '#a855f7', glyph: 'RBT' },
-    assembly: { name: 'Assembly Station', w: 3,   h: 1.5, color: '#10b981', glyph: 'ASM' },
-    conveyor: { name: 'Conveyor',         w: 6,   h: 0.8, color: '#f59e0b', glyph: 'CNV' },
-    oven:     { name: 'Oven / Furnace',   w: 4,   h: 2.5, color: '#ef4444', glyph: 'OVN' },
-    paint:    { name: 'Paint Booth',      w: 5,   h: 4,   color: '#ec4899', glyph: 'PNT' },
-    qc:       { name: 'QC / Inspection',  w: 2.5, h: 2,   color: '#14b8a6', glyph: 'QC'  },
-    packing:  { name: 'Packing Station',  w: 3,   h: 2,   color: '#84cc16', glyph: 'PCK' },
-    rack:     { name: 'Storage Rack',     w: 6,   h: 1.2, color: '#64748b', glyph: 'RCK' },
-    buffer:   { name: 'WIP Buffer',       w: 2,   h: 2,   color: '#94a3b8', glyph: 'WIP' },
-    dock:     { name: 'Loading Dock',     w: 4,   h: 3,   color: '#0f766e', glyph: 'DCK' },
-    office:   { name: 'Office / Desk',    w: 2,   h: 1.5, color: '#78716c', glyph: 'OFF' },
-    utility:  { name: 'Utility / Panel',  w: 1.5, h: 1,   color: '#475569', glyph: 'UTL' },
-  };
+  /* Machines have no built-in catalogue — every type is one the user defines
+     and lives in the document, so a layout file carries its own palette. */
+  M.DEFAULT_TYPE_COLORS = [
+    '#3b82f6', '#10b981', '#f59e0b', '#a855f7', '#ef4444', '#0ea5e9',
+    '#84cc16', '#ec4899', '#14b8a6', '#6366f1', '#f97316', '#64748b',
+  ];
+  M.UNTYPED_COLOR = '#64748b';
 
   M.ZONE_COLORS = ['#4f9cf9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#64748b'];
 
@@ -957,9 +1008,36 @@ window.FB = window.FB || {};
     name: 'Untitled Factory',
     grid: 1,
     unit: 'm',
+    types: [],
     items: [],
     process: [],
   });
+
+  /* ---------- machine types ---------- */
+
+  M.type = (name, w, h, color) => ({
+    id: M.uid(),
+    name: name || 'New machine',
+    w: Math.max(0.2, Number(w) || 2),
+    h: Math.max(0.2, Number(h) || 2),
+    color: color || M.DEFAULT_TYPE_COLORS[0],
+  });
+
+  M.types = (doc) => {
+    if (!Array.isArray(doc.types)) doc.types = [];
+    return doc.types;
+  };
+
+  M.typeById = (doc, id) => (id ? M.types(doc).find((t) => t.id === id) || null : null);
+
+  /* A colour that is not already in heavy use, for the next new type. */
+  M.nextTypeColor = (doc) => {
+    const used = new Set(M.types(doc).map((t) => t.color));
+    return M.DEFAULT_TYPE_COLORS.find((c) => !used.has(c)) ||
+      M.DEFAULT_TYPE_COLORS[M.types(doc).length % M.DEFAULT_TYPE_COLORS.length];
+  };
+
+  M.machinesOfType = (doc, id) => doc.items.filter((it) => it.type === 'machine' && it.kind === id);
 
   /* A written process step, optionally tied to an item on the floor. */
   M.step = (title, details, link) => ({
@@ -978,22 +1056,20 @@ window.FB = window.FB || {};
 
   /* ---------- factories ---------- */
 
-  M.machine = (kind, x, y, w, h) => {
-    const k = M.KINDS[kind] || M.KINDS.cnc;
-    return {
-      id: M.uid(),
-      type: 'machine',
-      kind,
-      x, y,
-      w: w || k.w,
-      h: h || k.h,
-      rot: 0,
-      label: k.name,
-      color: k.color,
-      clearance: 0,
-      notes: '',
-    };
-  };
+  /* `type` is a type object from doc.types, or null for a plain box. */
+  M.machine = (type, x, y, w, h) => ({
+    id: M.uid(),
+    type: 'machine',
+    kind: type ? type.id : null,
+    x, y,
+    w: w || (type ? type.w : 2),
+    h: h || (type ? type.h : 2),
+    rot: 0,
+    label: type ? type.name : 'Machine',
+    color: type ? type.color : M.UNTYPED_COLOR,
+    clearance: 0,
+    notes: '',
+  });
 
   M.wall = (points, thickness) => ({
     id: M.uid(),
@@ -1258,6 +1334,16 @@ window.FB = window.FB || {};
     const doc = M.newDoc();
     doc.name = typeof raw.name === 'string' ? raw.name : doc.name;
     doc.grid = Number(raw.grid) > 0 ? Number(raw.grid) : 1;
+
+    if (Array.isArray(raw.types)) {
+      for (const t of raw.types) {
+        if (!t || typeof t !== 'object') continue;
+        const type = M.type(str(t.name, 'Machine'), num(t.w, 2), num(t.h, 2), str(t.color, M.DEFAULT_TYPE_COLORS[0]));
+        if (typeof t.id === 'string' && t.id) type.id = t.id;
+        doc.types.push(type);
+      }
+    }
+
     const seen = new Set();
     for (const it of raw.items) {
       const clean = M.sanitize(it, seen);
@@ -1269,6 +1355,8 @@ window.FB = window.FB || {};
       const okEnd = (e) => e && (!e.item || seen.has(e.item));
       return okEnd(it.from) && okEnd(it.to);
     });
+
+    if (!doc.types.length) deriveTypes(doc);
 
     if (Array.isArray(raw.process)) {
       for (const st of raw.process) {
@@ -1294,9 +1382,10 @@ window.FB = window.FB || {};
     if (!id || (seen && seen.has(id))) id = M.uid();
     switch (it.type) {
       case 'machine': {
-        const kind = M.KINDS[it.kind] ? it.kind : 'cnc';
-        const base = M.machine(kind, num(it.x, 0), num(it.y, 0), Math.max(0.2, num(it.w, 0) || M.KINDS[kind].w), Math.max(0.2, num(it.h, 0) || M.KINDS[kind].h));
+        const base = M.machine(null, num(it.x, 0), num(it.y, 0),
+          Math.max(0.2, num(it.w, 2)), Math.max(0.2, num(it.h, 2)));
         base.id = id;
+        base.kind = typeof it.kind === 'string' && it.kind ? it.kind : null;
         base.rot = num(it.rot, 0);
         base.label = str(it.label, base.label);
         base.color = str(it.color, base.color);
@@ -1356,6 +1445,32 @@ window.FB = window.FB || {};
     }
   };
 
+  /* Files written before machine types existed only carry a `kind` string per
+     machine. Rebuild a palette from what those machines actually look like so
+     nothing is lost on load. */
+  function deriveTypes(doc) {
+    const groups = new Map();
+    for (const it of doc.items) {
+      if (it.type !== 'machine' || !it.kind) continue;
+      if (!groups.has(it.kind)) groups.set(it.kind, []);
+      groups.get(it.kind).push(it);
+    }
+    for (const [kind, machines] of groups) {
+      const first = machines[0];
+      /* Prefer a label shared by the group, minus any trailing number. */
+      const bases = machines.map((m) => (m.label || '').replace(/\s+\d+$/, '').trim()).filter(Boolean);
+      const tally = {};
+      let name = '', best = 0;
+      for (const b of bases) {
+        tally[b] = (tally[b] || 0) + 1;
+        if (tally[b] > best) { best = tally[b]; name = b; }
+      }
+      const type = M.type(name || kind, first.w, first.h, first.color);
+      type.id = kind;
+      doc.types.push(type);
+    }
+  }
+
   /* ---------- stats ---------- */
 
   M.stats = (doc) => {
@@ -1366,11 +1481,13 @@ window.FB = window.FB || {};
     };
     for (const it of doc.items) {
       switch (it.type) {
-        case 'machine':
+        case 'machine': {
           s.machines++;
           s.machineArea += it.w * it.h;
-          s.byKind[it.kind] = (s.byKind[it.kind] || 0) + 1;
+          const key = it.kind || '';
+          s.byKind[key] = (s.byKind[key] || 0) + 1;
           break;
+        }
         case 'zone':
           s.zones++;
           s.zoneArea += it.w * it.h;
@@ -1684,7 +1801,7 @@ window.FB = window.FB || {};
       if (fit < 16) return;
 
       const cx = m.x + m.w / 2, cy = m.y + m.h / 2;
-      const kind = M.KINDS[m.kind];
+      const type = M.typeById(state.doc, m.kind);
       let fontPx = G.clamp(Math.min(m.h * zoom * 0.3, m.w * zoom * 0.16), 8, 15);
 
       ctx.save();
@@ -1694,20 +1811,22 @@ window.FB = window.FB || {};
       ctx.textBaseline = 'middle';
 
       const maxW = m.w * zoom - 8;
-      const raw = m.label || (kind ? kind.name : 'Machine');
+      const raw = m.label || (type ? type.name : 'Machine');
       /* Shrink before truncating so short boxes still read. */
       const setFont = (px) => { ctx.font = '600 ' + px.toFixed(1) + 'px Inter, "Segoe UI", system-ui, sans-serif'; };
       setFont(fontPx);
       while (fontPx > 7.5 && ctx.measureText(raw).width > maxW) { fontPx -= 0.5; setFont(fontPx); }
       ctx.fillStyle = C.text;
       const line = ellipsize(ctx, raw, maxW);
-      const showSub = m.h * zoom > 34 && kind;
+      const showSub = m.h * zoom > 34;
       ctx.fillText(line, 0, showSub ? -fontPx * 0.55 : 0);
 
       if (showSub) {
+        /* Name the type too, but only when it adds something the label doesn't. */
+        const prefix = type && type.name !== raw ? type.name + ' · ' : '';
         ctx.font = (fontPx * 0.72).toFixed(1) + 'px Inter, "Segoe UI", system-ui, sans-serif';
         ctx.fillStyle = C.textDim;
-        ctx.fillText(ellipsize(ctx, kind.glyph + ' · ' + fmt(m.w) + '×' + fmt(m.h) + ' m', maxW), 0, fontPx * 0.62);
+        ctx.fillText(ellipsize(ctx, prefix + fmt(m.w) + '×' + fmt(m.h) + ' m', maxW), 0, fontPx * 0.62);
       }
       ctx.restore();
     });
@@ -2410,8 +2529,8 @@ window.FB = window.FB || {};
   /* ---------- pointer down ---------- */
 
   function onDown(e) {
-    if (e.button === 2) {           /* right button cancels in-progress work */
-      if (state.draft) { cancelDraft(); e.preventDefault(); }
+    if (e.button === 2) {           /* right button ends whatever is being drawn */
+      if (state.draft) { e.preventDefault(); T.commitDraft(); }
       return;
     }
     canvas.setPointerCapture(e.pointerId);
@@ -2534,7 +2653,7 @@ window.FB = window.FB || {};
       const anchor = host ? G.rectCenter(host) : { x: snapVal(wp.x, e), y: snapVal(wp.y, e) };
       state.draft = { kind: 'route', from, nodes: [anchor], waypoints: [], cursor: wp, color: state.routeColor };
       state.drag = { type: 'routePress', startScreen: screenPos(e) };
-      app.setHint('Drag to the destination machine, or click it · click empty space to add a bend · Esc to cancel');
+      app.setHint('Release or click on the destination · click empty space to add a bend · double-click, Enter or right-click ends it anywhere · Esc cancels');
       return;
     }
 
@@ -2544,8 +2663,11 @@ window.FB = window.FB || {};
       return;
     }
     const p = snapPoint(wp, e);
-    d.waypoints.push(p);
-    d.nodes.push(p);
+    const last = d.nodes[d.nodes.length - 1];
+    if (G.dist(last.x, last.y, p.x, p.y) > 1e-6) {
+      d.waypoints.push(p);
+      d.nodes.push(p);
+    }
     state.drag = { type: 'routePress', startScreen: screenPos(e) };
   }
 
@@ -2649,6 +2771,7 @@ window.FB = window.FB || {};
     } else {
       const host = M.hostAt(state.doc, wp, tolWorld(4));
       d.cursor = host ? G.rectCenter(host) : snapPoint(wp, e);
+      d.hostId = host ? host.id : null;
       state.hover = host ? host.id : null;
     }
     app.invalidate();
@@ -2816,8 +2939,14 @@ window.FB = window.FB || {};
       case 'routePress': {
         const dr = state.draft;
         if (dr && dr.kind === 'route' && dragged(d, e)) {
-          const host = M.hostAt(state.doc, worldPos(e), tolWorld(4));
-          if (host && host.id !== (dr.from.item || null)) finishRoute(M.endpointOn(host.id));
+          const wp = worldPos(e);
+          const host = M.hostAt(state.doc, wp, tolWorld(4));
+          if (host) {
+            /* Releasing back inside the source is not a route — keep drawing. */
+            if (host.id !== (dr.from.item || null)) finishRoute(M.endpointOn(host.id));
+          } else {
+            endRouteAt(snapPoint(wp, e));
+          }
         }
         break;
       }
@@ -2840,10 +2969,15 @@ window.FB = window.FB || {};
     let { x, y, w, h } = d.rect;
 
     if (d.mode === 'machine') {
-      const k = M.KINDS[state.activeKind] || M.KINDS.cnc;
-      if (w < 0.3 || h < 0.3) { w = k.w; h = k.h; x = d.start.x - w / 2; y = d.start.y - h / 2; }
-      const m = M.machine(state.activeKind, x, y, w, h);
-      m.label = nextName(k.name);
+      const type = M.typeById(state.doc, state.activeType);
+      if (w < 0.3 || h < 0.3) {
+        w = type ? type.w : 2;
+        h = type ? type.h : 2;
+        x = d.start.x - w / 2;
+        y = d.start.y - h / 2;
+      }
+      const m = M.machine(type, x, y, w, h);
+      m.label = nextName(type ? type.name : 'Machine');
       state.doc.items.push(m);
       setSelection([m.id]);
     } else if (d.mode === 'zone') {
@@ -2902,6 +3036,22 @@ window.FB = window.FB || {};
     if (!state.stickyTool) app.setTool('select');
   }
 
+  /* Close an open route at a loose point rather than on a machine. */
+  function endRouteAt(point) {
+    const d = state.draft;
+    if (!d || d.kind !== 'route') return false;
+    const wps = d.waypoints;
+    while (wps.length && G.dist(wps[wps.length - 1].x, wps[wps.length - 1].y, point.x, point.y) < 1e-6) {
+      wps.pop();
+    }
+    const start = d.nodes[0];
+    if (!wps.length && d.from.item === undefined && G.dist(start.x, start.y, point.x, point.y) < 0.05) {
+      return false;                 /* zero-length: nothing worth keeping */
+    }
+    finishRoute(M.endpointAt(point.x, point.y));
+    return true;
+  }
+
   function cancelDraft() {
     state.draft = null;
     state.measure = null;
@@ -2918,13 +3068,13 @@ window.FB = window.FB || {};
     if (state.draft.kind === 'wall') { finishWall(); return true; }
     if (state.draft.kind === 'route') {
       const d = state.draft;
-      if (d.waypoints.length) {
-        const last = d.waypoints[d.waypoints.length - 1];
-        d.waypoints = d.waypoints.slice(0, -1);
-        finishRoute(M.endpointAt(last.x, last.y));
-      } else {
-        cancelDraft();
+      const host = d.hostId ? M.byId(state.doc, d.hostId) : null;
+      if (host && host.id !== (d.from.item || null)) {
+        finishRoute(M.endpointOn(host.id));
+        return true;
       }
+      const end = d.cursor || d.waypoints[d.waypoints.length - 1];
+      if (!end || !endRouteAt({ x: end.x, y: end.y })) cancelDraft();
       return true;
     }
     return false;
@@ -2935,6 +3085,12 @@ window.FB = window.FB || {};
   function onDblClick(e) {
     const wp = worldPos(e);
     if (state.draft && state.draft.kind === 'wall') { finishWall(); return; }
+    if (state.draft && state.draft.kind === 'route') {
+      const host = M.hostAt(state.doc, wp, tolWorld(4));
+      if (host && host.id !== (state.draft.from.item || null)) finishRoute(M.endpointOn(host.id));
+      else if (!endRouteAt(snapPoint(wp, e))) cancelDraft();
+      return;
+    }
 
     const hit = M.hitTest(state.doc, wp, tolWorld(5));
     if (!hit) return;
@@ -3017,6 +3173,30 @@ window.FB = window.FB || {};
     doc.name = 'Example Plant — Line A';
     const add = (it) => { doc.items.push(it); return it; };
 
+    /* The example brings its own machine types — nothing is built in. */
+    const T = {};
+    const deftype = (key, name, w, h, color) => {
+      const t = M.type(name, w, h, color);
+      doc.types.push(t);
+      T[key] = t;
+      return t;
+    };
+    deftype('cnc',      'CNC Machine',      3,   2,   '#3b82f6');
+    deftype('lathe',    'Lathe',            2.5, 1.5, '#0ea5e9');
+    deftype('press',    'Press',            2,   2,   '#6366f1');
+    deftype('robot',    'Robot Cell',       3,   3,   '#a855f7');
+    deftype('assembly', 'Assembly Station', 3,   1.5, '#10b981');
+    deftype('conveyor', 'Conveyor',         6,   0.8, '#f59e0b');
+    deftype('oven',     'Oven / Furnace',   4,   2.5, '#ef4444');
+    deftype('paint',    'Paint Booth',      5,   4,   '#ec4899');
+    deftype('qc',       'QC / Inspection',  2.5, 2,   '#14b8a6');
+    deftype('packing',  'Packing Station',  3,   2,   '#84cc16');
+    deftype('rack',     'Storage Rack',     6,   1.2, '#64748b');
+    deftype('buffer',   'WIP Buffer',       2,   2,   '#94a3b8');
+    deftype('dock',     'Loading Dock',     4,   3,   '#0f766e');
+    deftype('office',   'Office / Desk',    2,   1.5, '#78716c');
+    deftype('utility',  'Utility / Panel',  1.5, 1,   '#475569');
+
     /* --- zones --- */
     const zone = (x, y, w, h, label, color) => {
       const z = M.zone(x, y, w, h, label);
@@ -3043,7 +3223,7 @@ window.FB = window.FB || {};
 
     /* --- machines --- */
     const mk = (kind, x, y, label, opts) => {
-      const m = M.machine(kind, x, y);
+      const m = M.machine(T[kind], x, y);
       if (label) m.label = label;
       Object.assign(m, opts || {});
       return add(m);
@@ -3211,33 +3391,48 @@ window.FB = window.FB || {};
 
   /* ---------- palette ---------- */
 
+  const PENCIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg>';
+
   function buildPalette() {
     const host = document.getElementById('palette');
     host.innerHTML = '';
-    for (const key of Object.keys(M.KINDS)) {
-      const k = M.KINDS[key];
+    const types = M.types(state.doc);
+
+    if (!types.length) {
+      host.appendChild(el('div', { class: 'pal-empty', html:
+        '<b>No machine types yet</b>Use <b style="display:inline">+ New</b> to add the machines you actually have — ' +
+        'name, footprint and colour. You can also draw a box with the Machine tool and save it as a type.' }));
+      return;
+    }
+
+    for (const t of types) {
       const item = el('div', {
-        class: 'pal-item' + (state.activeKind === key ? ' active' : ''),
-        'data-kind': key,
+        class: 'pal-item' + (state.activeType === t.id ? ' active' : ''),
+        'data-type': t.id,
         draggable: 'true',
-        title: k.name + ' — default ' + k.w + ' × ' + k.h + ' m',
+        title: t.name + ' — default ' + R.fmt(t.w) + ' × ' + R.fmt(t.h) + ' m',
       }, [
         el('span', { class: 'pal-swatch' }),
-        el('span', { class: 'pal-name', text: k.name }),
-        el('span', { class: 'pal-size', text: k.w + '×' + k.h }),
+        el('span', { class: 'pal-name', text: t.name }),
+        el('span', { class: 'pal-size', text: R.fmt(t.w) + '×' + R.fmt(t.h) }),
+        el('button', { class: 'pal-edit', html: PENCIL, title: 'Edit this type' }),
       ]);
-      item.querySelector('.pal-swatch').style.background = k.color;
+      item.querySelector('.pal-swatch').style.background = t.color;
 
+      item.querySelector('.pal-edit').addEventListener('click', (e) => {
+        e.stopPropagation();
+        app.openTypeEditor(t.id);
+      });
       item.addEventListener('click', () => {
-        state.activeKind = key;
+        state.activeType = t.id;
         app.setTool('machine');
         U.refreshPalette();
-        app.setHint('Drag a box on the canvas, or click once for a ' + k.w + ' × ' + k.h + ' m ' + k.name);
+        app.setHint('Drag a box, or click once for a ' + R.fmt(t.w) + ' × ' + R.fmt(t.h) + ' m ' + t.name);
       });
       item.addEventListener('dragstart', (e) => {
-        state.activeKind = key;
+        state.activeType = t.id;
         U.refreshPalette();
-        e.dataTransfer.setData('text/plain', key);
+        e.dataTransfer.setData('text/plain', t.id);
         e.dataTransfer.effectAllowed = 'copy';
       });
       host.appendChild(item);
@@ -3245,11 +3440,7 @@ window.FB = window.FB || {};
   }
   U.buildPalette = buildPalette;
 
-  U.refreshPalette = () => {
-    document.querySelectorAll('.pal-item').forEach((n) => {
-      n.classList.toggle('active', n.dataset.kind === state.activeKind);
-    });
-  };
+  U.refreshPalette = () => buildPalette();
 
   /* ---------- properties ---------- */
 
@@ -3286,15 +3477,21 @@ window.FB = window.FB || {};
 
   function machineProps(host, m) {
     host.appendChild(row('Name', textInput(m.label, (v) => { m.label = v; })));
-    host.appendChild(row('Type', selectInput(
-      Object.keys(M.KINDS).map((k) => [k, M.KINDS[k].name]), m.kind,
-      (v) => {
-        m.kind = v;
-        const k = M.KINDS[v];
-        if (m.color !== k.color) m.color = k.color;
-        if (!m.label || Object.values(M.KINDS).some((kk) => kk.name === m.label)) m.label = k.name;
-        U.refreshProps();
-      })));
+    const types = M.types(state.doc);
+    const typeOptions = [['', types.length ? '— no type —' : '— no types defined —']]
+      .concat(types.map((t) => [t.id, t.name]));
+    const typeSel = selectInput(typeOptions, m.kind || '', (v) => {
+      const prev = M.typeById(state.doc, m.kind);
+      m.kind = v || null;
+      const next = M.typeById(state.doc, v);
+      if (next) {
+        m.color = next.color;
+        /* Only rename when the label was just the old type's name. */
+        if (!m.label || (prev && m.label === prev.name)) m.label = next.name;
+      }
+      U.refreshProps();
+    });
+    host.appendChild(row('Type', typeSel, button('Save as…', () => app.saveMachineAsType(m), '', 'Create a new type from this machine')));
 
     host.appendChild(row('Position', numberInput(m.x, 0.5, (v) => { m.x = v; }), numberInput(m.y, 0.5, (v) => { m.y = v; })));
     host.appendChild(row('Size (m)', numberInput(m.w, 0.5, (v) => { m.w = Math.max(0.2, v); }), numberInput(m.h, 0.5, (v) => { m.h = Math.max(0.2, v); })));
@@ -3468,14 +3665,15 @@ window.FB = window.FB || {};
       const bars = el('div', { class: 'stat-bars' });
       const max = Math.max(...kinds.map((k) => s.byKind[k]));
       for (const k of kinds.slice(0, 8)) {
+        const t = M.typeById(state.doc, k);
         const bar = el('div', { class: 'stat-bar' }, [
-          el('span', { text: M.KINDS[k].name }),
+          el('span', { text: t ? t.name : 'Untyped' }),
           el('b', { text: String(s.byKind[k]) }),
         ]);
         const track = el('div', { class: 'track' });
         const fill = el('div', { class: 'fill' });
         fill.style.width = Math.round((s.byKind[k] / max) * 100) + '%';
-        fill.style.background = M.KINDS[k].color;
+        fill.style.background = t ? t.color : M.UNTYPED_COLOR;
         track.appendChild(fill);
         bar.appendChild(track);
         bars.appendChild(bar);
@@ -3614,7 +3812,7 @@ window.FB = window.FB || {};
     doc: M.newDoc(),
     cam: { x: -4, y: -4, zoom: 26 },
     tool: 'select',
-    activeKind: 'cnc',
+    activeType: null,
     selection: new Set(),
     hover: null,
     drag: null,
@@ -3724,7 +3922,11 @@ window.FB = window.FB || {};
     document.querySelectorAll('.tool').forEach((b) => b.classList.toggle('active', b.dataset.tool === tool));
     canvas.style.cursor = tool === 'pan' ? 'grab' : 'default';
     const hints = {
-      machine: 'Drag a box to place a ' + M.KINDS[state.activeKind].name,
+      machine: (() => {
+        const t = M.typeById(state.doc, state.activeType);
+        return t ? 'Drag a box to place a ' + t.name
+                 : 'Drag a box for an untyped machine — or define a type in the palette first';
+      })(),
       wall: 'Click each corner · Enter or double-click to finish',
       room: 'Drag out a rectangular room of walls',
       route: 'Click the source machine, then the destination',
@@ -3944,6 +4146,101 @@ window.FB = window.FB || {};
     app.toast('Cascaded ' + created.length + ' machine' + (created.length === 1 ? '' : 's'));
   };
 
+  /* ---------- machine types ---------- */
+
+  let editingType = null;
+
+  app.openTypeEditor = (typeId) => {
+    const t = M.typeById(state.doc, typeId);
+    editingType = t ? t.id : null;
+
+    document.getElementById('typeModalTitle').textContent = t ? 'Edit machine type' : 'New machine type';
+    document.getElementById('typeName').value = t ? t.name : '';
+    document.getElementById('typeW').value = t ? R.fmt(t.w) : '3';
+    document.getElementById('typeH').value = t ? R.fmt(t.h) : '2';
+    document.getElementById('typeColor').value = t ? t.color : M.nextTypeColor(state.doc);
+
+    const used = t ? M.machinesOfType(state.doc, t.id).length : 0;
+    const applyRow = document.getElementById('typeApplyRow');
+    applyRow.classList.toggle('hidden', used === 0);
+    document.getElementById('typeUseCount').textContent = String(used);
+    document.getElementById('typeApply').checked = false;
+    document.getElementById('btnTypeDelete').classList.toggle('hidden', !t);
+    document.getElementById('typeNote').textContent = t && used
+      ? 'Deleting this type leaves those ' + used + ' machines exactly as they are — they just stop being typed.'
+      : 'Types are saved inside the layout, so a file always carries the machines it was drawn with.';
+
+    document.getElementById('typeModal').classList.remove('hidden');
+    const name = document.getElementById('typeName');
+    setTimeout(() => { name.focus(); name.select(); }, 0);
+  };
+
+  app.closeTypeEditor = () => {
+    document.getElementById('typeModal').classList.add('hidden');
+    editingType = null;
+  };
+
+  app.saveType = () => {
+    const name = document.getElementById('typeName').value.trim();
+    const w = Math.max(0.2, parseFloat(document.getElementById('typeW').value) || 2);
+    const h = Math.max(0.2, parseFloat(document.getElementById('typeH').value) || 2);
+    const color = document.getElementById('typeColor').value;
+    if (!name) { app.toast('Give the type a name'); document.getElementById('typeName').focus(); return; }
+
+    const existing = M.typeById(state.doc, editingType);
+    if (existing) {
+      existing.name = name;
+      existing.w = w;
+      existing.h = h;
+      existing.color = color;
+      if (document.getElementById('typeApply').checked) {
+        for (const m of M.machinesOfType(state.doc, existing.id)) {
+          m.color = color;
+          m.w = w;
+          m.h = h;
+        }
+      }
+      app.toast('Type updated');
+    } else {
+      const t = M.type(name, w, h, color);
+      M.types(state.doc).push(t);
+      state.activeType = t.id;
+      app.toast('“' + name + '” added — pick it and drag a box');
+    }
+
+    app.closeTypeEditor();
+    app.commit();
+    FB.ui.buildPalette();
+    app.refresh();
+  };
+
+  app.deleteType = () => {
+    const t = M.typeById(state.doc, editingType);
+    if (!t) return;
+    const used = M.machinesOfType(state.doc, t.id);
+    state.doc.types = M.types(state.doc).filter((x) => x.id !== t.id);
+    /* The machines keep their own size, colour and name — only the link goes. */
+    for (const m of used) m.kind = null;
+    if (state.activeType === t.id) state.activeType = null;
+    app.closeTypeEditor();
+    app.commit();
+    FB.ui.buildPalette();
+    app.refresh();
+    app.toast(used.length ? 'Type removed — ' + used.length + ' machines kept as they are' : 'Type removed');
+  };
+
+  /* Turn a box already on the floor into a reusable type. */
+  app.saveMachineAsType = (m) => {
+    const t = M.type(m.label || 'Machine', m.w, m.h, m.color);
+    M.types(state.doc).push(t);
+    m.kind = t.id;
+    state.activeType = t.id;
+    app.commit();
+    FB.ui.buildPalette();
+    app.refresh();
+    app.toast('Saved “' + t.name + '” as a type');
+  };
+
   /* ---------- process steps ---------- */
 
   function steps() {
@@ -4143,6 +4440,8 @@ window.FB = window.FB || {};
     state.measure = null;
     document.getElementById('docName').value = doc.name;
     if (!Array.isArray(state.doc.process)) state.doc.process = [];
+    if (!M.typeById(doc, state.activeType)) state.activeType = null;
+    FB.ui.buildPalette();
     H.reset(doc);
     app.zoomFit();
     app.refresh();
@@ -4307,6 +4606,7 @@ window.FB = window.FB || {};
     if (!doc) return;
     state.doc = doc;
     pruneSelection();
+    afterDocSwap();
     document.getElementById('docName').value = doc.name;
     app.refresh();
     scheduleSave();
@@ -4317,10 +4617,16 @@ window.FB = window.FB || {};
     if (!doc) return;
     state.doc = doc;
     pruneSelection();
+    afterDocSwap();
     document.getElementById('docName').value = doc.name;
     app.refresh();
     scheduleSave();
   };
+
+  function afterDocSwap() {
+    if (!M.typeById(state.doc, state.activeType)) state.activeType = null;
+    FB.ui.buildPalette();
+  }
 
   function pruneSelection() {
     const ids = new Set(state.doc.items.map((it) => it.id));
@@ -4346,7 +4652,10 @@ window.FB = window.FB || {};
 
     document.getElementById('btnNew').addEventListener('click', () => {
       if (state.doc.items.length && !confirm('Start a new layout? Anything unsaved is lost.')) return;
-      setDoc(M.newDoc(), 'New layout');
+      const fresh = M.newDoc();
+      /* Carry the machine types over — they are the user's own library. */
+      fresh.types = M.types(state.doc).map((t) => JSON.parse(JSON.stringify(t)));
+      setDoc(fresh, 'New layout');
     });
     document.getElementById('btnOpen').addEventListener('click', () => document.getElementById('fileInput').click());
     document.getElementById('fileInput').addEventListener('change', (e) => {
@@ -4389,6 +4698,18 @@ window.FB = window.FB || {};
       setDoc(FB.sample(), 'Example layout loaded');
     });
 
+    document.getElementById('btnNewType').addEventListener('click', () => app.openTypeEditor(null));
+    document.getElementById('btnTypeSave').addEventListener('click', app.saveType);
+    document.getElementById('btnTypeDelete').addEventListener('click', app.deleteType);
+    document.getElementById('btnTypeClose').addEventListener('click', app.closeTypeEditor);
+    document.getElementById('typeModal').addEventListener('click', (e) => {
+      if (e.target.id === 'typeModal') app.closeTypeEditor();
+    });
+    document.getElementById('typeModal').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); app.saveType(); }
+      if (e.key === 'Escape') { e.preventDefault(); app.closeTypeEditor(); }
+    });
+
     document.getElementById('btnHelp').addEventListener('click', () => toggleHelp(true));
     document.getElementById('btnHelpClose').addEventListener('click', () => toggleHelp(false));
     document.getElementById('helpModal').addEventListener('click', (e) => {
@@ -4402,15 +4723,15 @@ window.FB = window.FB || {};
     wrap.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
     wrap.addEventListener('drop', (e) => {
       e.preventDefault();
-      const kind = e.dataTransfer.getData('text/plain');
-      if (!M.KINDS[kind]) return;
+      const typeId = e.dataTransfer.getData('text/plain');
+      const t = M.typeById(state.doc, typeId);
+      if (!t) return;
       const rect = canvas.getBoundingClientRect();
       const wp = R.toWorld(state.cam, e.clientX - rect.left, e.clientY - rect.top);
-      const k = M.KINDS[kind];
-      const x = state.snap ? G.snap(wp.x - k.w / 2, state.doc.grid) : wp.x - k.w / 2;
-      const y = state.snap ? G.snap(wp.y - k.h / 2, state.doc.grid) : wp.y - k.h / 2;
-      const m = M.machine(kind, x, y);
-      m.label = FB.tools.nextName(k.name);
+      const x = state.snap ? G.snap(wp.x - t.w / 2, state.doc.grid) : wp.x - t.w / 2;
+      const y = state.snap ? G.snap(wp.y - t.h / 2, state.doc.grid) : wp.y - t.h / 2;
+      const m = M.machine(t, x, y);
+      m.label = FB.tools.nextName(t.name);
       state.doc.items.push(m);
       state.selection = new Set([m.id]);
       app.commit();

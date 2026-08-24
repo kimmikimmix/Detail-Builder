@@ -13,7 +13,7 @@
     doc: M.newDoc(),
     cam: { x: -4, y: -4, zoom: 26 },
     tool: 'select',
-    activeKind: 'cnc',
+    activeType: null,
     selection: new Set(),
     hover: null,
     drag: null,
@@ -123,7 +123,11 @@
     document.querySelectorAll('.tool').forEach((b) => b.classList.toggle('active', b.dataset.tool === tool));
     canvas.style.cursor = tool === 'pan' ? 'grab' : 'default';
     const hints = {
-      machine: 'Drag a box to place a ' + M.KINDS[state.activeKind].name,
+      machine: (() => {
+        const t = M.typeById(state.doc, state.activeType);
+        return t ? 'Drag a box to place a ' + t.name
+                 : 'Drag a box for an untyped machine — or define a type in the palette first';
+      })(),
       wall: 'Click each corner · Enter or double-click to finish',
       room: 'Drag out a rectangular room of walls',
       route: 'Click the source machine, then the destination',
@@ -343,6 +347,101 @@
     app.toast('Cascaded ' + created.length + ' machine' + (created.length === 1 ? '' : 's'));
   };
 
+  /* ---------- machine types ---------- */
+
+  let editingType = null;
+
+  app.openTypeEditor = (typeId) => {
+    const t = M.typeById(state.doc, typeId);
+    editingType = t ? t.id : null;
+
+    document.getElementById('typeModalTitle').textContent = t ? 'Edit machine type' : 'New machine type';
+    document.getElementById('typeName').value = t ? t.name : '';
+    document.getElementById('typeW').value = t ? R.fmt(t.w) : '3';
+    document.getElementById('typeH').value = t ? R.fmt(t.h) : '2';
+    document.getElementById('typeColor').value = t ? t.color : M.nextTypeColor(state.doc);
+
+    const used = t ? M.machinesOfType(state.doc, t.id).length : 0;
+    const applyRow = document.getElementById('typeApplyRow');
+    applyRow.classList.toggle('hidden', used === 0);
+    document.getElementById('typeUseCount').textContent = String(used);
+    document.getElementById('typeApply').checked = false;
+    document.getElementById('btnTypeDelete').classList.toggle('hidden', !t);
+    document.getElementById('typeNote').textContent = t && used
+      ? 'Deleting this type leaves those ' + used + ' machines exactly as they are — they just stop being typed.'
+      : 'Types are saved inside the layout, so a file always carries the machines it was drawn with.';
+
+    document.getElementById('typeModal').classList.remove('hidden');
+    const name = document.getElementById('typeName');
+    setTimeout(() => { name.focus(); name.select(); }, 0);
+  };
+
+  app.closeTypeEditor = () => {
+    document.getElementById('typeModal').classList.add('hidden');
+    editingType = null;
+  };
+
+  app.saveType = () => {
+    const name = document.getElementById('typeName').value.trim();
+    const w = Math.max(0.2, parseFloat(document.getElementById('typeW').value) || 2);
+    const h = Math.max(0.2, parseFloat(document.getElementById('typeH').value) || 2);
+    const color = document.getElementById('typeColor').value;
+    if (!name) { app.toast('Give the type a name'); document.getElementById('typeName').focus(); return; }
+
+    const existing = M.typeById(state.doc, editingType);
+    if (existing) {
+      existing.name = name;
+      existing.w = w;
+      existing.h = h;
+      existing.color = color;
+      if (document.getElementById('typeApply').checked) {
+        for (const m of M.machinesOfType(state.doc, existing.id)) {
+          m.color = color;
+          m.w = w;
+          m.h = h;
+        }
+      }
+      app.toast('Type updated');
+    } else {
+      const t = M.type(name, w, h, color);
+      M.types(state.doc).push(t);
+      state.activeType = t.id;
+      app.toast('“' + name + '” added — pick it and drag a box');
+    }
+
+    app.closeTypeEditor();
+    app.commit();
+    FB.ui.buildPalette();
+    app.refresh();
+  };
+
+  app.deleteType = () => {
+    const t = M.typeById(state.doc, editingType);
+    if (!t) return;
+    const used = M.machinesOfType(state.doc, t.id);
+    state.doc.types = M.types(state.doc).filter((x) => x.id !== t.id);
+    /* The machines keep their own size, colour and name — only the link goes. */
+    for (const m of used) m.kind = null;
+    if (state.activeType === t.id) state.activeType = null;
+    app.closeTypeEditor();
+    app.commit();
+    FB.ui.buildPalette();
+    app.refresh();
+    app.toast(used.length ? 'Type removed — ' + used.length + ' machines kept as they are' : 'Type removed');
+  };
+
+  /* Turn a box already on the floor into a reusable type. */
+  app.saveMachineAsType = (m) => {
+    const t = M.type(m.label || 'Machine', m.w, m.h, m.color);
+    M.types(state.doc).push(t);
+    m.kind = t.id;
+    state.activeType = t.id;
+    app.commit();
+    FB.ui.buildPalette();
+    app.refresh();
+    app.toast('Saved “' + t.name + '” as a type');
+  };
+
   /* ---------- process steps ---------- */
 
   function steps() {
@@ -542,6 +641,8 @@
     state.measure = null;
     document.getElementById('docName').value = doc.name;
     if (!Array.isArray(state.doc.process)) state.doc.process = [];
+    if (!M.typeById(doc, state.activeType)) state.activeType = null;
+    FB.ui.buildPalette();
     H.reset(doc);
     app.zoomFit();
     app.refresh();
@@ -706,6 +807,7 @@
     if (!doc) return;
     state.doc = doc;
     pruneSelection();
+    afterDocSwap();
     document.getElementById('docName').value = doc.name;
     app.refresh();
     scheduleSave();
@@ -716,10 +818,16 @@
     if (!doc) return;
     state.doc = doc;
     pruneSelection();
+    afterDocSwap();
     document.getElementById('docName').value = doc.name;
     app.refresh();
     scheduleSave();
   };
+
+  function afterDocSwap() {
+    if (!M.typeById(state.doc, state.activeType)) state.activeType = null;
+    FB.ui.buildPalette();
+  }
 
   function pruneSelection() {
     const ids = new Set(state.doc.items.map((it) => it.id));
@@ -745,7 +853,10 @@
 
     document.getElementById('btnNew').addEventListener('click', () => {
       if (state.doc.items.length && !confirm('Start a new layout? Anything unsaved is lost.')) return;
-      setDoc(M.newDoc(), 'New layout');
+      const fresh = M.newDoc();
+      /* Carry the machine types over — they are the user's own library. */
+      fresh.types = M.types(state.doc).map((t) => JSON.parse(JSON.stringify(t)));
+      setDoc(fresh, 'New layout');
     });
     document.getElementById('btnOpen').addEventListener('click', () => document.getElementById('fileInput').click());
     document.getElementById('fileInput').addEventListener('change', (e) => {
@@ -788,6 +899,18 @@
       setDoc(FB.sample(), 'Example layout loaded');
     });
 
+    document.getElementById('btnNewType').addEventListener('click', () => app.openTypeEditor(null));
+    document.getElementById('btnTypeSave').addEventListener('click', app.saveType);
+    document.getElementById('btnTypeDelete').addEventListener('click', app.deleteType);
+    document.getElementById('btnTypeClose').addEventListener('click', app.closeTypeEditor);
+    document.getElementById('typeModal').addEventListener('click', (e) => {
+      if (e.target.id === 'typeModal') app.closeTypeEditor();
+    });
+    document.getElementById('typeModal').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); app.saveType(); }
+      if (e.key === 'Escape') { e.preventDefault(); app.closeTypeEditor(); }
+    });
+
     document.getElementById('btnHelp').addEventListener('click', () => toggleHelp(true));
     document.getElementById('btnHelpClose').addEventListener('click', () => toggleHelp(false));
     document.getElementById('helpModal').addEventListener('click', (e) => {
@@ -801,15 +924,15 @@
     wrap.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
     wrap.addEventListener('drop', (e) => {
       e.preventDefault();
-      const kind = e.dataTransfer.getData('text/plain');
-      if (!M.KINDS[kind]) return;
+      const typeId = e.dataTransfer.getData('text/plain');
+      const t = M.typeById(state.doc, typeId);
+      if (!t) return;
       const rect = canvas.getBoundingClientRect();
       const wp = R.toWorld(state.cam, e.clientX - rect.left, e.clientY - rect.top);
-      const k = M.KINDS[kind];
-      const x = state.snap ? G.snap(wp.x - k.w / 2, state.doc.grid) : wp.x - k.w / 2;
-      const y = state.snap ? G.snap(wp.y - k.h / 2, state.doc.grid) : wp.y - k.h / 2;
-      const m = M.machine(kind, x, y);
-      m.label = FB.tools.nextName(k.name);
+      const x = state.snap ? G.snap(wp.x - t.w / 2, state.doc.grid) : wp.x - t.w / 2;
+      const y = state.snap ? G.snap(wp.y - t.h / 2, state.doc.grid) : wp.y - t.h / 2;
+      const m = M.machine(t, x, y);
+      m.label = FB.tools.nextName(t.name);
       state.doc.items.push(m);
       state.selection = new Set([m.id]);
       app.commit();

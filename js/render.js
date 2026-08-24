@@ -229,7 +229,7 @@
       if (fit < 16) return;
 
       const cx = m.x + m.w / 2, cy = m.y + m.h / 2;
-      const kind = M.KINDS[m.kind];
+      const type = M.typeById(state.doc, m.kind);
       let fontPx = G.clamp(Math.min(m.h * zoom * 0.3, m.w * zoom * 0.16), 8, 15);
 
       ctx.save();
@@ -239,20 +239,22 @@
       ctx.textBaseline = 'middle';
 
       const maxW = m.w * zoom - 8;
-      const raw = m.label || (kind ? kind.name : 'Machine');
+      const raw = m.label || (type ? type.name : 'Machine');
       /* Shrink before truncating so short boxes still read. */
       const setFont = (px) => { ctx.font = '600 ' + px.toFixed(1) + 'px Inter, "Segoe UI", system-ui, sans-serif'; };
       setFont(fontPx);
       while (fontPx > 7.5 && ctx.measureText(raw).width > maxW) { fontPx -= 0.5; setFont(fontPx); }
       ctx.fillStyle = C.text;
       const line = ellipsize(ctx, raw, maxW);
-      const showSub = m.h * zoom > 34 && kind;
+      const showSub = m.h * zoom > 34;
       ctx.fillText(line, 0, showSub ? -fontPx * 0.55 : 0);
 
       if (showSub) {
+        /* Name the type too, but only when it adds something the label doesn't. */
+        const prefix = type && type.name !== raw ? type.name + ' · ' : '';
         ctx.font = (fontPx * 0.72).toFixed(1) + 'px Inter, "Segoe UI", system-ui, sans-serif';
         ctx.fillStyle = C.textDim;
-        ctx.fillText(ellipsize(ctx, kind.glyph + ' · ' + fmt(m.w) + '×' + fmt(m.h) + ' m', maxW), 0, fontPx * 0.62);
+        ctx.fillText(ellipsize(ctx, prefix + fmt(m.w) + '×' + fmt(m.h) + ' m', maxW), 0, fontPx * 0.62);
       }
       ctx.restore();
     });

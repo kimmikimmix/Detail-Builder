@@ -93,8 +93,8 @@
 
     <div class="panel grow">
       <div class="panel-title">
-        Machine palette
-        <span class="hint">click, then drag on canvas</span>
+        Machine types
+        <button class="title-btn" id="btnNewType" title="Define a new machine type">+ New</button>
       </div>
       <div class="palette" id="palette"></div>
     </div>
@@ -185,6 +185,42 @@
   </aside>
 </div>
 
+<div class="modal hidden" id="typeModal">
+  <div class="modal-card narrow">
+    <div class="modal-head">
+      <h2 id="typeModalTitle">New machine type</h2>
+      <button class="btn icon" id="btnTypeClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="props">
+        <div class="row">
+          <label>Name</label>
+          <input type="text" id="typeName" placeholder="e.g. Haas VF-2, Weld bench, Pallet rack" spellcheck="false">
+        </div>
+        <div class="row two">
+          <label>Size (m)</label>
+          <input type="number" id="typeW" step="0.5" min="0.2" title="Width in metres">
+          <input type="number" id="typeH" step="0.5" min="0.2" title="Depth in metres">
+        </div>
+        <div class="row">
+          <label>Colour</label>
+          <input type="color" id="typeColor">
+        </div>
+        <label class="check hidden" id="typeApplyRow">
+          <input type="checkbox" id="typeApply"> Apply the colour and size to the
+          <span id="typeUseCount">0</span> machines already using this type
+        </label>
+        <div class="btnrow">
+          <button class="btn primary" id="btnTypeSave">Save type</button>
+          <button class="btn danger hidden" id="btnTypeDelete">Delete type</button>
+        </div>
+        <p class="note" id="typeNote">Types are saved inside the layout, so a file always
+          carries the machines it was drawn with.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal hidden" id="helpModal">
   <div class="modal-card">
     <div class="modal-head">
@@ -201,9 +237,10 @@
       <section>
         <h3>Drawing</h3>
         <ul>
-          <li><b>Machine</b> — pick a type in the palette, then drag a box. A plain click drops the default size.</li>
+          <li><b>Machine</b> — pick one of your types, then drag a box. A plain click drops that type's default size. With no type selected you get a plain box you can name yourself.</li>
+          <li><b>Machine types</b> — the palette starts empty; <b>+ New</b> defines a type (name, default size, colour), and clicking the pencil edits or deletes one. Machines keep their own size and colour, so editing a type only changes what you place next unless you tick <i>apply to existing</i>.</li>
           <li><b>Wall</b> — click for each corner, <kbd>Enter</kbd> or double-click to finish, <kbd>Esc</kbd> to cancel. Hold <kbd>Shift</kbd> to lock to 45&deg;.</li>
-          <li><b>Route</b> — click the source machine, click waypoints if you want them, click the target machine. Routes stay attached when machines move.</li>
+          <li><b>Route</b> — drag from one machine to another for a one-way arrow, or click the source then the target. Click empty space to add a bend; <b>double-click</b>, <kbd>Enter</kbd> or right-click ends a route anywhere, machine or not. Routes stay attached when machines move.</li>
           <li><b>Cascade</b> — select machines and use the cascade panel to repeat them into a line, optionally wired up with routes.</li>
         </ul>
       </section>

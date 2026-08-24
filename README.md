@@ -42,19 +42,36 @@ node tools/build-standalone.js
 
 | Item | How |
 | --- | --- |
-| **Machine** | Pick a type in the palette, then drag a box on the canvas — or click once for the default size, or drag the palette entry straight onto the canvas. |
-| **Route** | Click the source machine then the destination, or just drag from one to the other. Click empty space mid-route to add a bend. Routes stay attached when you move the machines. |
+| **Machine** | Pick one of your machine types, then drag a box on the canvas — or click once for that type's default size, or drag the palette entry straight onto the canvas. With no type selected you get a plain box to name yourself. |
+| **Route** | A one-way arrow from A to B: drag from one machine to another, or click the source then the target. Click empty space mid-route to add a bend. Ends anywhere — on a machine, or in open space via double-click, <kbd>Enter</kbd> or right-click. Routes stay attached when you move the machines. |
 | **Wall** | Click each corner and press <kbd>Enter</kbd> (or double-click) to finish. Drag for a single straight run. Hold <kbd>Shift</kbd> to lock to 45°. |
 | **Room** | Drag a rectangle to get four walls at once. |
 | **Zone** | Drag out a named area (machining cell, warehouse, assembly). Zones sit behind everything and only catch clicks on their border or title, so machines inside stay grabbable. |
 | **Text** | Click to drop an annotation. |
 | **Measure** | Drag to read a distance, plus its Δx / Δy. |
 
-Sixteen machine types ship in the palette — CNC, lathe, press, injection
-molder, robot cell, assembly station, conveyor, oven, paint booth, QC, packing,
-storage rack, WIP buffer, loading dock, office and utility panel — each with a
-sensible default footprint in metres. Any machine can be resized, rotated, and
-recoloured, and given a clearance halo for the space it needs around it.
+### Your own machine types
+
+There is no built-in catalogue — **the palette starts empty and you fill it
+with the machines you actually have.**
+
+- **+ New** defines a type: a name, a default footprint in metres, and a
+  colour. It then sits in the palette ready to place.
+- The **pencil** on a palette row edits or deletes a type. Editing only changes
+  what you place next, unless you tick *apply to the N machines already using
+  this type* — so a machine you deliberately resized stays as you left it.
+- Deleting a type leaves its machines exactly as they are; they simply stop
+  being typed.
+- Drew a box first? Select it and hit **Save as…** next to Type in the
+  Properties panel to turn it into a reusable type.
+- Types are stored **inside the layout file**, so a layout always travels with
+  the machines it was drawn with. Starting a **New** layout carries your types
+  over, so your library survives.
+- Opening a file written before types existed rebuilds a palette from the
+  machines in it, so nothing is lost.
+
+Any machine can then be resized, rotated and recoloured on its own, and given a
+clearance halo for the space it needs around it.
 
 ### Naming machines
 
@@ -158,8 +175,11 @@ A layout is a JSON document of positioned items:
   "version": 1,
   "name": "Example Plant — Line A",
   "grid": 1,
+  "types": [
+    { "id": "t1", "name": "CNC Machine", "w": 3, "h": 2, "color": "#3b82f6" }
+  ],
   "items": [
-    { "id": "i1", "type": "machine", "kind": "cnc", "x": 15, "y": 3,
+    { "id": "i1", "type": "machine", "kind": "t1", "x": 15, "y": 3,
       "w": 3, "h": 2, "rot": 0, "label": "CNC 1", "color": "#3b82f6" },
     { "id": "i2", "type": "wall", "points": [{"x":0,"y":0},{"x":48,"y":0}],
       "thickness": 0.35, "closed": false },
@@ -168,6 +188,10 @@ A layout is a JSON document of positioned items:
   ]
 }
 ```
+
+A machine's `kind` is the id of one of the document's own `types`, or `null`
+for an untyped box; either way the machine carries its own size, colour and
+label, so it draws correctly even if the type is gone.
 
 Route endpoints are either `{"item": "<id>"}` — docked to a machine and
 recalculated whenever it moves — or a fixed `{"x": …, "y": …}` point. Unknown

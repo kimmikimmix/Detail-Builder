@@ -9,6 +9,30 @@
     doc.name = 'Example Plant — Line A';
     const add = (it) => { doc.items.push(it); return it; };
 
+    /* The example brings its own machine types — nothing is built in. */
+    const T = {};
+    const deftype = (key, name, w, h, color) => {
+      const t = M.type(name, w, h, color);
+      doc.types.push(t);
+      T[key] = t;
+      return t;
+    };
+    deftype('cnc',      'CNC Machine',      3,   2,   '#3b82f6');
+    deftype('lathe',    'Lathe',            2.5, 1.5, '#0ea5e9');
+    deftype('press',    'Press',            2,   2,   '#6366f1');
+    deftype('robot',    'Robot Cell',       3,   3,   '#a855f7');
+    deftype('assembly', 'Assembly Station', 3,   1.5, '#10b981');
+    deftype('conveyor', 'Conveyor',         6,   0.8, '#f59e0b');
+    deftype('oven',     'Oven / Furnace',   4,   2.5, '#ef4444');
+    deftype('paint',    'Paint Booth',      5,   4,   '#ec4899');
+    deftype('qc',       'QC / Inspection',  2.5, 2,   '#14b8a6');
+    deftype('packing',  'Packing Station',  3,   2,   '#84cc16');
+    deftype('rack',     'Storage Rack',     6,   1.2, '#64748b');
+    deftype('buffer',   'WIP Buffer',       2,   2,   '#94a3b8');
+    deftype('dock',     'Loading Dock',     4,   3,   '#0f766e');
+    deftype('office',   'Office / Desk',    2,   1.5, '#78716c');
+    deftype('utility',  'Utility / Panel',  1.5, 1,   '#475569');
+
     /* --- zones --- */
     const zone = (x, y, w, h, label, color) => {
       const z = M.zone(x, y, w, h, label);
@@ -35,7 +59,7 @@
 
     /* --- machines --- */
     const mk = (kind, x, y, label, opts) => {
-      const m = M.machine(kind, x, y);
+      const m = M.machine(T[kind], x, y);
       if (label) m.label = label;
       Object.assign(m, opts || {});
       return add(m);

@@ -7,25 +7,13 @@
 
   M.VERSION = 1;
 
-  /* Machine catalogue. Sizes are in metres. */
-  M.KINDS = {
-    cnc:      { name: 'CNC Machine',      w: 3,   h: 2,   color: '#3b82f6', glyph: 'CNC' },
-    lathe:    { name: 'Lathe',            w: 2.5, h: 1.5, color: '#0ea5e9', glyph: 'LTH' },
-    press:    { name: 'Press',            w: 2,   h: 2,   color: '#6366f1', glyph: 'PRS' },
-    molder:   { name: 'Injection Molder', w: 4,   h: 2,   color: '#8b5cf6', glyph: 'IMM' },
-    robot:    { name: 'Robot Cell',       w: 3,   h: 3,   color: '#a855f7', glyph: 'RBT' },
-    assembly: { name: 'Assembly Station', w: 3,   h: 1.5, color: '#10b981', glyph: 'ASM' },
-    conveyor: { name: 'Conveyor',         w: 6,   h: 0.8, color: '#f59e0b', glyph: 'CNV' },
-    oven:     { name: 'Oven / Furnace',   w: 4,   h: 2.5, color: '#ef4444', glyph: 'OVN' },
-    paint:    { name: 'Paint Booth',      w: 5,   h: 4,   color: '#ec4899', glyph: 'PNT' },
-    qc:       { name: 'QC / Inspection',  w: 2.5, h: 2,   color: '#14b8a6', glyph: 'QC'  },
-    packing:  { name: 'Packing Station',  w: 3,   h: 2,   color: '#84cc16', glyph: 'PCK' },
-    rack:     { name: 'Storage Rack',     w: 6,   h: 1.2, color: '#64748b', glyph: 'RCK' },
-    buffer:   { name: 'WIP Buffer',       w: 2,   h: 2,   color: '#94a3b8', glyph: 'WIP' },
-    dock:     { name: 'Loading Dock',     w: 4,   h: 3,   color: '#0f766e', glyph: 'DCK' },
-    office:   { name: 'Office / Desk',    w: 2,   h: 1.5, color: '#78716c', glyph: 'OFF' },
-    utility:  { name: 'Utility / Panel',  w: 1.5, h: 1,   color: '#475569', glyph: 'UTL' },
-  };
+  /* Machines have no built-in catalogue — every type is one the user defines
+     and lives in the document, so a layout file carries its own palette. */
+  M.DEFAULT_TYPE_COLORS = [
+    '#3b82f6', '#10b981', '#f59e0b', '#a855f7', '#ef4444', '#0ea5e9',
+    '#84cc16', '#ec4899', '#14b8a6', '#6366f1', '#f97316', '#64748b',
+  ];
+  M.UNTYPED_COLOR = '#64748b';
 
   M.ZONE_COLORS = ['#4f9cf9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#64748b'];
 
@@ -37,9 +25,36 @@
     name: 'Untitled Factory',
     grid: 1,
     unit: 'm',
+    types: [],
     items: [],
     process: [],
   });
+
+  /* ---------- machine types ---------- */
+
+  M.type = (name, w, h, color) => ({
+    id: M.uid(),
+    name: name || 'New machine',
+    w: Math.max(0.2, Number(w) || 2),
+    h: Math.max(0.2, Number(h) || 2),
+    color: color || M.DEFAULT_TYPE_COLORS[0],
+  });
+
+  M.types = (doc) => {
+    if (!Array.isArray(doc.types)) doc.types = [];
+    return doc.types;
+  };
+
+  M.typeById = (doc, id) => (id ? M.types(doc).find((t) => t.id === id) || null : null);
+
+  /* A colour that is not already in heavy use, for the next new type. */
+  M.nextTypeColor = (doc) => {
+    const used = new Set(M.types(doc).map((t) => t.color));
+    return M.DEFAULT_TYPE_COLORS.find((c) => !used.has(c)) ||
+      M.DEFAULT_TYPE_COLORS[M.types(doc).length % M.DEFAULT_TYPE_COLORS.length];
+  };
+
+  M.machinesOfType = (doc, id) => doc.items.filter((it) => it.type === 'machine' && it.kind === id);
 
   /* A written process step, optionally tied to an item on the floor. */
   M.step = (title, details, link) => ({
@@ -58,22 +73,20 @@
 
   /* ---------- factories ---------- */
 
-  M.machine = (kind, x, y, w, h) => {
-    const k = M.KINDS[kind] || M.KINDS.cnc;
-    return {
-      id: M.uid(),
-      type: 'machine',
-      kind,
-      x, y,
-      w: w || k.w,
-      h: h || k.h,
-      rot: 0,
-      label: k.name,
-      color: k.color,
-      clearance: 0,
-      notes: '',
-    };
-  };
+  /* `type` is a type object from doc.types, or null for a plain box. */
+  M.machine = (type, x, y, w, h) => ({
+    id: M.uid(),
+    type: 'machine',
+    kind: type ? type.id : null,
+    x, y,
+    w: w || (type ? type.w : 2),
+    h: h || (type ? type.h : 2),
+    rot: 0,
+    label: type ? type.name : 'Machine',
+    color: type ? type.color : M.UNTYPED_COLOR,
+    clearance: 0,
+    notes: '',
+  });
 
   M.wall = (points, thickness) => ({
     id: M.uid(),
@@ -338,6 +351,16 @@
     const doc = M.newDoc();
     doc.name = typeof raw.name === 'string' ? raw.name : doc.name;
     doc.grid = Number(raw.grid) > 0 ? Number(raw.grid) : 1;
+
+    if (Array.isArray(raw.types)) {
+      for (const t of raw.types) {
+        if (!t || typeof t !== 'object') continue;
+        const type = M.type(str(t.name, 'Machine'), num(t.w, 2), num(t.h, 2), str(t.color, M.DEFAULT_TYPE_COLORS[0]));
+        if (typeof t.id === 'string' && t.id) type.id = t.id;
+        doc.types.push(type);
+      }
+    }
+
     const seen = new Set();
     for (const it of raw.items) {
       const clean = M.sanitize(it, seen);
@@ -349,6 +372,8 @@
       const okEnd = (e) => e && (!e.item || seen.has(e.item));
       return okEnd(it.from) && okEnd(it.to);
     });
+
+    if (!doc.types.length) deriveTypes(doc);
 
     if (Array.isArray(raw.process)) {
       for (const st of raw.process) {
@@ -374,9 +399,10 @@
     if (!id || (seen && seen.has(id))) id = M.uid();
     switch (it.type) {
       case 'machine': {
-        const kind = M.KINDS[it.kind] ? it.kind : 'cnc';
-        const base = M.machine(kind, num(it.x, 0), num(it.y, 0), Math.max(0.2, num(it.w, 0) || M.KINDS[kind].w), Math.max(0.2, num(it.h, 0) || M.KINDS[kind].h));
+        const base = M.machine(null, num(it.x, 0), num(it.y, 0),
+          Math.max(0.2, num(it.w, 2)), Math.max(0.2, num(it.h, 2)));
         base.id = id;
+        base.kind = typeof it.kind === 'string' && it.kind ? it.kind : null;
         base.rot = num(it.rot, 0);
         base.label = str(it.label, base.label);
         base.color = str(it.color, base.color);
@@ -436,6 +462,32 @@
     }
   };
 
+  /* Files written before machine types existed only carry a `kind` string per
+     machine. Rebuild a palette from what those machines actually look like so
+     nothing is lost on load. */
+  function deriveTypes(doc) {
+    const groups = new Map();
+    for (const it of doc.items) {
+      if (it.type !== 'machine' || !it.kind) continue;
+      if (!groups.has(it.kind)) groups.set(it.kind, []);
+      groups.get(it.kind).push(it);
+    }
+    for (const [kind, machines] of groups) {
+      const first = machines[0];
+      /* Prefer a label shared by the group, minus any trailing number. */
+      const bases = machines.map((m) => (m.label || '').replace(/\s+\d+$/, '').trim()).filter(Boolean);
+      const tally = {};
+      let name = '', best = 0;
+      for (const b of bases) {
+        tally[b] = (tally[b] || 0) + 1;
+        if (tally[b] > best) { best = tally[b]; name = b; }
+      }
+      const type = M.type(name || kind, first.w, first.h, first.color);
+      type.id = kind;
+      doc.types.push(type);
+    }
+  }
+
   /* ---------- stats ---------- */
 
   M.stats = (doc) => {
@@ -446,11 +498,13 @@
     };
     for (const it of doc.items) {
       switch (it.type) {
-        case 'machine':
+        case 'machine': {
           s.machines++;
           s.machineArea += it.w * it.h;
-          s.byKind[it.kind] = (s.byKind[it.kind] || 0) + 1;
+          const key = it.kind || '';
+          s.byKind[key] = (s.byKind[key] || 0) + 1;
           break;
+        }
         case 'zone':
           s.zones++;
           s.zoneArea += it.w * it.h;

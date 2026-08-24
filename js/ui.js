@@ -83,33 +83,48 @@
 
   /* ---------- palette ---------- */
 
+  const PENCIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg>';
+
   function buildPalette() {
     const host = document.getElementById('palette');
     host.innerHTML = '';
-    for (const key of Object.keys(M.KINDS)) {
-      const k = M.KINDS[key];
+    const types = M.types(state.doc);
+
+    if (!types.length) {
+      host.appendChild(el('div', { class: 'pal-empty', html:
+        '<b>No machine types yet</b>Use <b style="display:inline">+ New</b> to add the machines you actually have — ' +
+        'name, footprint and colour. You can also draw a box with the Machine tool and save it as a type.' }));
+      return;
+    }
+
+    for (const t of types) {
       const item = el('div', {
-        class: 'pal-item' + (state.activeKind === key ? ' active' : ''),
-        'data-kind': key,
+        class: 'pal-item' + (state.activeType === t.id ? ' active' : ''),
+        'data-type': t.id,
         draggable: 'true',
-        title: k.name + ' — default ' + k.w + ' × ' + k.h + ' m',
+        title: t.name + ' — default ' + R.fmt(t.w) + ' × ' + R.fmt(t.h) + ' m',
       }, [
         el('span', { class: 'pal-swatch' }),
-        el('span', { class: 'pal-name', text: k.name }),
-        el('span', { class: 'pal-size', text: k.w + '×' + k.h }),
+        el('span', { class: 'pal-name', text: t.name }),
+        el('span', { class: 'pal-size', text: R.fmt(t.w) + '×' + R.fmt(t.h) }),
+        el('button', { class: 'pal-edit', html: PENCIL, title: 'Edit this type' }),
       ]);
-      item.querySelector('.pal-swatch').style.background = k.color;
+      item.querySelector('.pal-swatch').style.background = t.color;
 
+      item.querySelector('.pal-edit').addEventListener('click', (e) => {
+        e.stopPropagation();
+        app.openTypeEditor(t.id);
+      });
       item.addEventListener('click', () => {
-        state.activeKind = key;
+        state.activeType = t.id;
         app.setTool('machine');
         U.refreshPalette();
-        app.setHint('Drag a box on the canvas, or click once for a ' + k.w + ' × ' + k.h + ' m ' + k.name);
+        app.setHint('Drag a box, or click once for a ' + R.fmt(t.w) + ' × ' + R.fmt(t.h) + ' m ' + t.name);
       });
       item.addEventListener('dragstart', (e) => {
-        state.activeKind = key;
+        state.activeType = t.id;
         U.refreshPalette();
-        e.dataTransfer.setData('text/plain', key);
+        e.dataTransfer.setData('text/plain', t.id);
         e.dataTransfer.effectAllowed = 'copy';
       });
       host.appendChild(item);
@@ -117,11 +132,7 @@
   }
   U.buildPalette = buildPalette;
 
-  U.refreshPalette = () => {
-    document.querySelectorAll('.pal-item').forEach((n) => {
-      n.classList.toggle('active', n.dataset.kind === state.activeKind);
-    });
-  };
+  U.refreshPalette = () => buildPalette();
 
   /* ---------- properties ---------- */
 
@@ -158,15 +169,21 @@
 
   function machineProps(host, m) {
     host.appendChild(row('Name', textInput(m.label, (v) => { m.label = v; })));
-    host.appendChild(row('Type', selectInput(
-      Object.keys(M.KINDS).map((k) => [k, M.KINDS[k].name]), m.kind,
-      (v) => {
-        m.kind = v;
-        const k = M.KINDS[v];
-        if (m.color !== k.color) m.color = k.color;
-        if (!m.label || Object.values(M.KINDS).some((kk) => kk.name === m.label)) m.label = k.name;
-        U.refreshProps();
-      })));
+    const types = M.types(state.doc);
+    const typeOptions = [['', types.length ? '— no type —' : '— no types defined —']]
+      .concat(types.map((t) => [t.id, t.name]));
+    const typeSel = selectInput(typeOptions, m.kind || '', (v) => {
+      const prev = M.typeById(state.doc, m.kind);
+      m.kind = v || null;
+      const next = M.typeById(state.doc, v);
+      if (next) {
+        m.color = next.color;
+        /* Only rename when the label was just the old type's name. */
+        if (!m.label || (prev && m.label === prev.name)) m.label = next.name;
+      }
+      U.refreshProps();
+    });
+    host.appendChild(row('Type', typeSel, button('Save as…', () => app.saveMachineAsType(m), '', 'Create a new type from this machine')));
 
     host.appendChild(row('Position', numberInput(m.x, 0.5, (v) => { m.x = v; }), numberInput(m.y, 0.5, (v) => { m.y = v; })));
     host.appendChild(row('Size (m)', numberInput(m.w, 0.5, (v) => { m.w = Math.max(0.2, v); }), numberInput(m.h, 0.5, (v) => { m.h = Math.max(0.2, v); })));
@@ -340,14 +357,15 @@
       const bars = el('div', { class: 'stat-bars' });
       const max = Math.max(...kinds.map((k) => s.byKind[k]));
       for (const k of kinds.slice(0, 8)) {
+        const t = M.typeById(state.doc, k);
         const bar = el('div', { class: 'stat-bar' }, [
-          el('span', { text: M.KINDS[k].name }),
+          el('span', { text: t ? t.name : 'Untyped' }),
           el('b', { text: String(s.byKind[k]) }),
         ]);
         const track = el('div', { class: 'track' });
         const fill = el('div', { class: 'fill' });
         fill.style.width = Math.round((s.byKind[k] / max) * 100) + '%';
-        fill.style.background = M.KINDS[k].color;
+        fill.style.background = t ? t.color : M.UNTYPED_COLOR;
         track.appendChild(fill);
         bar.appendChild(track);
         bars.appendChild(bar);
