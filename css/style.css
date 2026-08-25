@@ -728,3 +728,86 @@ body.focus .canvas-wrap { border-left: none; }
 }
 .stop-dwell:focus { outline: none; border-color: var(--accent); }
 .stop-unit { font-size: 10px; color: var(--text-dim2); flex: none; }
+
+/* ---------- print ---------- */
+.print-opts { display: grid; grid-template-columns: 1fr 240px; gap: 16px; align-items: start; }
+.print-preview {
+  background: #eef1f5;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  min-height: 140px;
+}
+.print-preview img { max-width: 100%; max-height: 320px; display: block; }
+.print-preview-note { font-size: 10.5px; color: #64748b; font-variant-numeric: tabular-nums; }
+
+/* The sheet only exists on paper. */
+.print-sheet { display: none; }
+
+@media print {
+  html, body { height: auto; overflow: visible; background: #fff; }
+  body > *:not(.print-sheet) { display: none !important; }
+
+  .print-sheet {
+    display: block;
+    color: #111;
+    font: 11px/1.45 "Inter", "Segoe UI", system-ui, sans-serif;
+  }
+  .print-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid #d3d9e2;
+    padding-bottom: 5px;
+    margin-bottom: 8px;
+  }
+  .print-head h1 { font-size: 15px; margin: 0; font-weight: 700; }
+  .print-meta { font-size: 10px; color: #566072; }
+
+  .print-figure { text-align: center; }
+  .print-figure img { max-width: 100%; max-height: 165mm; object-fit: contain; }
+  body.print-portrait .print-figure img { max-height: 235mm; }
+
+  .print-tables { margin-top: 10px; }
+  .print-tables:empty { display: none; }
+  .print-tables h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: #566072;
+    margin: 0 0 5px;
+    page-break-after: avoid;
+  }
+  .print-tables table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 12px;
+    font-size: 10px;
+  }
+  .print-tables th, .print-tables td {
+    text-align: left;
+    padding: 3px 6px;
+    border-bottom: 1px solid #e2e7ef;
+    vertical-align: top;
+  }
+  .print-tables th { color: #566072; font-weight: 600; border-bottom-color: #c3ccda; }
+  .print-tables td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .print-tables tr.total td { font-weight: 700; border-top: 1px solid #c3ccda; }
+  .print-tables .swatch {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    margin-right: 5px;
+    vertical-align: baseline;
+  }
+  .print-break { page-break-before: always; }
+}
+
+@media (max-width: 720px) {
+  .print-opts { grid-template-columns: 1fr; }
+}

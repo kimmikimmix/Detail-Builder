@@ -21,6 +21,7 @@
     <button class="btn" id="btnOpen" title="Open a .factory.json file">Open</button>
     <button class="btn" id="btnSave" title="Download layout as JSON">Save</button>
     <button class="btn" id="btnPng" title="Export a PNG image">PNG</button>
+    <button class="btn" id="btnPrint" title="Print the layout (Ctrl+P)">Print</button>
     <input type="file" id="fileInput" accept=".json,application/json" hidden>
   </div>
 
@@ -264,6 +265,59 @@
   </aside>
 </div>
 
+<div class="modal hidden" id="printModal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2>Print layout</h2>
+      <button class="btn icon" id="btnPrintClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="print-opts">
+        <div class="print-preview">
+          <img id="printPreview" alt="Print preview">
+          <span class="print-preview-note" id="printPreviewNote"></span>
+        </div>
+        <div class="props">
+          <div class="subhead">Include</div>
+          <label class="check"><input type="checkbox" id="printDetails"> Machine details</label>
+          <label class="check"><input type="checkbox" id="printTimes"> Zone process &amp; times</label>
+          <label class="check"><input type="checkbox" id="printLabels" checked> Names on machines</label>
+          <label class="check"><input type="checkbox" id="printGrid"> Grid</label>
+          <label class="check"><input type="checkbox" id="printSummary"> Summary tables on a second page</label>
+
+          <div class="subhead">Paper</div>
+          <div class="row">
+            <label>Orientation</label>
+            <select id="printOrient">
+              <option value="landscape">Landscape</option>
+              <option value="portrait">Portrait</option>
+            </select>
+          </div>
+          <label class="check"><input type="checkbox" id="printHeader" checked> Title and date across the top</label>
+
+          <div class="btnrow">
+            <button class="btn primary" id="btnPrintGo">Print</button>
+            <button class="btn" id="btnPrintCancel">Cancel</button>
+          </div>
+          <p class="note">Only the drawing is printed — none of the toolbars or side
+            panels. Choose “Save as PDF” in the print dialog for a file.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="print-sheet" id="printSheet" aria-hidden="true">
+  <header class="print-head" id="printHead">
+    <h1 id="printTitle"></h1>
+    <div class="print-meta" id="printMeta"></div>
+  </header>
+  <div class="print-figure"><img id="printImage" alt=""></div>
+  <section class="print-tables" id="printTables"></section>
+</div>
+
+<style id="printPageStyle">@page { size: A4 landscape; margin: 10mm; }</style>
+
 <div class="modal hidden" id="typeModal">
   <div class="modal-card narrow">
     <div class="modal-head">
@@ -364,6 +418,16 @@
           <li>The <b>Run</b> tab animates a part through the plant. <b>Build from routes</b> follows your arrows to work out the order, or select a machine and <b>Add selected</b>.</li>
           <li>Reorder stops with ↑ ↓, drop one with ✕, and set the seconds of work at each stop. Between stops the token travels the route you drew, or a straight line where there isn't one.</li>
           <li><kbd>P</kbd> plays and pauses; drag the scrubber to move through the run; <b>Speed</b> is the travel speed in metres per second.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Printing</h3>
+        <ul>
+          <li><b>Print</b> (or <kbd>Ctrl</kbd>+<kbd>P</kbd>) prints the drawing on its own — no toolbars, no side panels.</li>
+          <li>Tick <b>Machine details</b> and <b>Zone process &amp; times</b> to include them, independently of what is showing on screen. <b>Names</b> and <b>Grid</b> are separate switches.</li>
+          <li><b>Summary tables</b> adds a second page listing every zone with its process and time (and a total), plus every machine's settings.</li>
+          <li>The drawing is scaled to the paper, so labels and detail cards come out the same readable size whatever the plant measures — the preview shows exactly what you will get, and the note gives the scale.</li>
+          <li>Choose “Save as PDF” in your browser's print dialog to get a file instead.</li>
         </ul>
       </section>
       <section>

@@ -66,7 +66,7 @@
     ctx.save();
     ctx.scale(R.dpr, R.dpr);
     ctx.clearRect(0, 0, R.width, R.height);
-    ctx.fillStyle = C.paper;
+    ctx.fillStyle = state.background || C.paper;
     ctx.fillRect(0, 0, R.width, R.height);
 
     if (state.showGrid) drawGrid(ctx, cam, doc.grid);
@@ -1011,22 +1011,35 @@
   R.hexA = hexA;
 
   /* Render the document to an offscreen canvas for PNG export. */
-  R.exportPNG = (state, scale, padding) => {
+  /* opts: { scale, padding, dpr, showGrid, showLabels, showSpecs, showTimes }.
+     `dpr` supersamples: the drawing is composed at `scale` px per metre and the
+     bitmap comes out that many times larger, so text keeps its size relative to
+     the layout while the image stays sharp enough to print.
+     Anything omitted falls back to what is on screen. A number in place of
+     opts is read as the scale, keeping the older two-argument form working. */
+  R.exportPNG = (state, opts, padding) => {
+    const o = typeof opts === 'number' || opts === undefined
+      ? { scale: opts, padding: padding }
+      : opts;
+    const pick = (key) => (o[key] === undefined ? state[key] : o[key]);
+
     const doc = state.doc;
     const b = M.docBounds(doc);
     if (!b) return null;
-    const pad = padding === undefined ? 2 : padding;
-    const zoom = (scale || 40);
+    const pad = o.padding === undefined ? 2 : o.padding;
+    const zoom = (o.scale || 40);
+    const dpr = Math.max(1, o.dpr || 1);
     const w = Math.min(8000, Math.max(64, Math.round((b.w + pad * 2) * zoom)));
     const h = Math.min(8000, Math.max(64, Math.round((b.h + pad * 2) * zoom)));
 
     const off = document.createElement('canvas');
-    off.width = w; off.height = h;
+    off.width = Math.min(16000, Math.round(w * dpr));
+    off.height = Math.min(16000, Math.round(h * dpr));
 
     const prev = { canvas: R.canvas, ctx: R.ctx, dpr: R.dpr, width: R.width, height: R.height };
     R.canvas = off;
     R.ctx = off.getContext('2d');
-    R.dpr = 1;
+    R.dpr = dpr;
     R.width = w;
     R.height = h;
 
@@ -1035,8 +1048,11 @@
       cam: { x: b.x - pad, y: b.y - pad, zoom },
       selection: new Set(),
       hover: null,
-      showGrid: state.showGrid,
-      showLabels: state.showLabels,
+      background: o.background,
+      showGrid: pick('showGrid'),
+      showLabels: pick('showLabels'),
+      showSpecs: pick('showSpecs'),
+      showTimes: pick('showTimes'),
       draft: null,
       guides: [],
       marquee: null,
