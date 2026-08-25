@@ -77,6 +77,7 @@
 
     const view = G.padAABB(R.viewBounds(cam), 4);
     const selected = state.selection;
+    labelRects = [];
 
     /* Painted in type order so machines sit above zones and under routes. */
     for (const it of doc.items) if (it.type === 'zone') drawItem(ctx, state, it, view);
@@ -234,29 +235,39 @@
       ctx.stroke();
 
       if (!state.showLabels) return;
-      const fit = Math.min(m.w, m.h) * zoom;
-      if (fit < 16) return;
+      /* Below this the box is a dot — a label would be noise. */
+      if (Math.min(m.w, m.h) * zoom < 9) return;
 
       const cx = m.x + m.w / 2, cy = m.y + m.h / 2;
       const type = M.typeById(state.doc, m.kind);
+      const raw = m.label || (type ? type.name : 'Machine');
+      const maxW = m.w * zoom - 8;
+
+      const setFont = (px) => { ctx.font = '600 ' + px.toFixed(1) + 'px Inter, "Segoe UI", system-ui, sans-serif'; };
+
+      /* Shrink to fit before giving up on putting the name inside the box. */
       let fontPx = G.clamp(Math.min(m.h * zoom * 0.3, m.w * zoom * 0.16), 8, 15);
+      ctx.save();
+      setFont(fontPx);
+      while (fontPx > MIN_LABEL_PX && ctx.measureText(raw).width > maxW) { fontPx -= 0.5; setFont(fontPx); }
+      const fitsInside = m.h * zoom >= MIN_LABEL_PX * 1.7 && ctx.measureText(raw).width <= maxW;
+      ctx.restore();
+
+      if (!fitsInside) {
+        /* A truncated name is no name at all, so put it outside instead. */
+        drawOutsideLabel(ctx, state, m, raw);
+        return;
+      }
 
       ctx.save();
       ctx.translate(cx, cy);
       ctx.scale(1 / zoom, 1 / zoom);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-
-      const maxW = m.w * zoom - 8;
-      const raw = m.label || (type ? type.name : 'Machine');
-      /* Shrink before truncating so short boxes still read. */
-      const setFont = (px) => { ctx.font = '600 ' + px.toFixed(1) + 'px Inter, "Segoe UI", system-ui, sans-serif'; };
       setFont(fontPx);
-      while (fontPx > 7.5 && ctx.measureText(raw).width > maxW) { fontPx -= 0.5; setFont(fontPx); }
       ctx.fillStyle = C.text;
-      const line = ellipsize(ctx, raw, maxW);
       const showSub = m.h * zoom > 34;
-      ctx.fillText(line, 0, showSub ? -fontPx * 0.55 : 0);
+      ctx.fillText(raw, 0, showSub ? -fontPx * 0.55 : 0);
 
       if (showSub) {
         /* Name the type too, but only when it adds something the label doesn't. */
@@ -267,6 +278,69 @@
       }
       ctx.restore();
     });
+  }
+
+  const MIN_LABEL_PX = 7.5;
+  /* An outside label is only worth drawing when the box is big enough to name. */
+  const MIN_OUTSIDE_BOX_PX = 26;
+
+  /* Screen-space rectangles already taken by outside labels this frame, so
+     names never pile on top of each other when the view is zoomed out. */
+  let labelRects = [];
+
+  function claimLabelRect(r) {
+    for (const o of labelRects) {
+      if (r.x < o.x + o.w && r.x + r.w > o.x && r.y < o.y + o.h && r.y + r.h > o.y) return false;
+    }
+    labelRects.push(r);
+    return true;
+  }
+
+  /* A name for a machine too small to hold it: a chip just outside the box,
+     above when a details card is already sitting underneath. */
+  function drawOutsideLabel(ctx, state, m, text) {
+    const zoom = state.cam.zoom;
+    const b = G.rectAABB(m);
+    if (Math.max(b.w, b.h) * zoom < MIN_OUTSIDE_BOX_PX) return;
+
+    const hasCard = state.showSpecs && (m.params || []).some((p) => p.k || p.v);
+    const above = hasCard;
+    const y = above ? -12 : 12;
+
+    ctx.save();
+    ctx.font = '600 10px Inter, "Segoe UI", system-ui, sans-serif';
+    const w = ctx.measureText(text).width;
+    ctx.restore();
+
+    /* Claim the space first — a name that would land on another one is
+       dropped rather than drawn over it. */
+    const anchor = R.toScreen(state.cam, b.x + b.w / 2, above ? b.y : b.y + b.h);
+    if (!claimLabelRect({ x: anchor.x - w / 2 - 4, y: anchor.y + y - 7, w: w + 8, h: 14 })) return;
+
+    ctx.save();
+    ctx.translate(b.x + b.w / 2, above ? b.y : b.y + b.h);
+    ctx.scale(1 / zoom, 1 / zoom);
+    ctx.font = '600 10px Inter, "Segoe UI", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    roundRect(ctx, -w / 2 - 4, y - 7, w + 8, 14, 3);
+    ctx.fillStyle = 'rgba(255,255,255,.9)';
+    ctx.fill();
+    ctx.strokeStyle = hexA(m.color, 0.55);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    /* A short leader so the name is clearly tied to its box. */
+    ctx.beginPath();
+    ctx.moveTo(0, above ? -5 : 5);
+    ctx.lineTo(0, above ? 0 : 0);
+    ctx.strokeStyle = hexA(m.color, 0.55);
+    ctx.stroke();
+
+    ctx.fillStyle = C.text;
+    ctx.fillText(text, 0, y);
+    ctx.restore();
   }
 
   /* Machines named in the written process carry their step numbers. */

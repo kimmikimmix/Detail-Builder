@@ -914,6 +914,7 @@
       tables: on('printSummary'),
       header: on('printHeader'),
       orientation: document.getElementById('printOrient').value,
+      paper: document.getElementById('printPaper').value,
     };
   }
 
@@ -921,16 +922,30 @@
      the size it will physically occupy, so labels, badges and detail cards come
      out the same readable size whatever the plant measures. */
   const MM = 96 / 25.4;
+  const MARGIN_MM = 10;
+
+  /* Short edge first, in millimetres, with the CSS @page keyword. */
+  const PAPERS = {
+    a4:      { w: 210, h: 297, css: 'A4', name: 'A4' },
+    a3:      { w: 297, h: 420, css: 'A3', name: 'A3' },
+    letter:  { w: 216, h: 279, css: 'letter', name: 'Letter' },
+    ledger:  { w: 279, h: 432, css: 'ledger', name: 'Ledger' },
+  };
 
   function printGeometry(o) {
+    const paper = PAPERS[o.paper] || PAPERS.a4;
     const landscape = o.orientation === 'landscape';
-    const availW = (landscape ? 277 : 190) * MM;
-    const availH = ((landscape ? 165 : 235) - (o.header ? 12 : 0)) * MM;
+    const sheetW = landscape ? paper.h : paper.w;
+    const sheetH = landscape ? paper.w : paper.h;
+
+    const availWmm = sheetW - MARGIN_MM * 2;
+    const availHmm = sheetH - MARGIN_MM * 2 - (o.header ? 12 : 0);
+
     const b = M.docBounds(state.doc);
     if (!b) return null;
     const pad = 1;
-    const zoom = Math.min(availW / (b.w + pad * 2), availH / (b.h + pad * 2));
-    return { zoom: Math.max(4, zoom), pad: pad };
+    const zoom = Math.min((availWmm * MM) / (b.w + pad * 2), (availHmm * MM) / (b.h + pad * 2));
+    return { zoom: Math.max(4, zoom), pad: pad, paper: paper, availWmm: availWmm, availHmm: availHmm };
   }
 
   function printRender(o, dpr) {
@@ -976,7 +991,7 @@
     img.src = off.toDataURL('image/png');
     const b = M.docBounds(state.doc);
     const geo = printGeometry(o);
-    note.textContent = R.fmt(b.w) + ' × ' + R.fmt(b.h) + ' m · A4 ' + o.orientation +
+    note.textContent = R.fmt(b.w) + ' × ' + R.fmt(b.h) + ' m · ' + geo.paper.name + ' ' + o.orientation +
       ' · 1:' + Math.round(1000 / (geo.zoom / MM)) +
       (o.tables ? ' · plus summary tables' : '');
   };
@@ -1033,9 +1048,13 @@
     const off = printRender(o, 3);
     if (!off) { app.toast('Nothing to print yet'); return; }
 
+    const geo = printGeometry(o);
     document.getElementById('printPageStyle').textContent =
-      '@page { size: A4 ' + o.orientation + '; margin: 10mm; }';
-    document.body.classList.toggle('print-portrait', o.orientation === 'portrait');
+      '@page { size: ' + geo.paper.css + ' ' + o.orientation + '; margin: ' + MARGIN_MM + 'mm; }';
+    /* The image box has to match whatever sheet was chosen. */
+    const image = document.getElementById('printImage');
+    image.style.maxHeight = geo.availHmm + 'mm';
+    image.style.maxWidth = geo.availWmm + 'mm';
 
     const s = M.stats(state.doc);
     const zoneTime = state.doc.items
@@ -1268,7 +1287,7 @@
     document.getElementById('printModal').addEventListener('click', (e) => {
       if (e.target.id === 'printModal') app.closePrintDialog();
     });
-    ['printDetails', 'printTimes', 'printLabels', 'printGrid', 'printSummary', 'printOrient']
+    ['printDetails', 'printTimes', 'printLabels', 'printGrid', 'printSummary', 'printOrient', 'printPaper']
       .forEach((id) => document.getElementById(id).addEventListener('change', app.updatePrintPreview));
     document.getElementById('btnUndo').addEventListener('click', app.undo);
     document.getElementById('btnRedo').addEventListener('click', app.redo);

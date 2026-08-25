@@ -156,13 +156,25 @@ screen: **Machine details**, **Zone process & times**, **Names**, **Grid**, and
 **Summary tables** — a second page listing every zone with its process and time
 (with a total) and every machine's settings.
 
+Paper is **A4, A3, Letter or Ledger**, landscape or portrait — a bigger sheet
+means a bigger scale, so more of each name fits inside its box.
+
 The drawing is composed at the size it will physically occupy on the page, so
 labels, time badges and detail cards print at the same readable size whatever
 the plant measures, and the bitmap is supersampled to roughly 290 dpi. The
 preview in the dialog is the same composition shown small, so what you see is
-what prints; the note under it gives the drawing scale (e.g. `1:265`). Pick
-landscape or portrait, and choose "Save as PDF" in the browser's print dialog
-for a file.
+what prints; the note under it gives the drawing scale (e.g. `1:182`). Choose
+"Save as PDF" in the browser's print dialog for a file.
+
+### Names that don't fit
+
+A machine too small to hold its name no longer gets a truncated one (`Pa…`).
+The name goes in a chip just outside the box instead, with a short leader —
+above it when a details card is already sitting underneath. Two rules keep that
+from becoming clutter: a box under about 26 pixels across is left unnamed, and
+a chip that would land on one already placed is dropped rather than drawn over
+it. So zoomed out you get the names that fit, and on paper — where the scale is
+fixed to the sheet — you get all of them.
 
 ### Room to work
 

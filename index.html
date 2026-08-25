@@ -287,6 +287,15 @@
 
           <div class="subhead">Paper</div>
           <div class="row">
+            <label>Size</label>
+            <select id="printPaper">
+              <option value="a4">A4 — 210 × 297 mm</option>
+              <option value="a3">A3 — 297 × 420 mm</option>
+              <option value="letter">Letter — 8.5 × 11 in</option>
+              <option value="ledger">Ledger — 11 × 17 in</option>
+            </select>
+          </div>
+          <div class="row">
             <label>Orientation</label>
             <select id="printOrient">
               <option value="landscape">Landscape</option>
@@ -426,7 +435,9 @@
           <li><b>Print</b> (or <kbd>Ctrl</kbd>+<kbd>P</kbd>) prints the drawing on its own — no toolbars, no side panels.</li>
           <li>Tick <b>Machine details</b> and <b>Zone process &amp; times</b> to include them, independently of what is showing on screen. <b>Names</b> and <b>Grid</b> are separate switches.</li>
           <li><b>Summary tables</b> adds a second page listing every zone with its process and time (and a total), plus every machine's settings.</li>
+          <li>Pick the <b>paper size</b> — A4, A3, Letter or Ledger — and the orientation. Bigger paper means a bigger scale, so more fits inside the boxes.</li>
           <li>The drawing is scaled to the paper, so labels and detail cards come out the same readable size whatever the plant measures — the preview shows exactly what you will get, and the note gives the scale.</li>
+          <li>A machine too small to hold its name gets the name in a chip just outside the box instead of a truncated one, and names that would collide are dropped rather than drawn over each other.</li>
           <li>Choose “Save as PDF” in your browser's print dialog to get a file instead.</li>
         </ul>
       </section>
