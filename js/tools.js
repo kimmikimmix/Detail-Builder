@@ -108,8 +108,8 @@
   /* ---------- pointer down ---------- */
 
   function onDown(e) {
-    if (e.button === 2) {           /* right button cancels in-progress work */
-      if (state.draft) { cancelDraft(); e.preventDefault(); }
+    if (e.button === 2) {           /* right button ends whatever is being drawn */
+      if (state.draft) { e.preventDefault(); T.commitDraft(); }
       return;
     }
     canvas.setPointerCapture(e.pointerId);
@@ -232,7 +232,7 @@
       const anchor = host ? G.rectCenter(host) : { x: snapVal(wp.x, e), y: snapVal(wp.y, e) };
       state.draft = { kind: 'route', from, nodes: [anchor], waypoints: [], cursor: wp, color: state.routeColor };
       state.drag = { type: 'routePress', startScreen: screenPos(e) };
-      app.setHint('Drag to the destination machine, or click it · click empty space to add a bend · Esc to cancel');
+      app.setHint('Release or click on the destination · click empty space to add a bend · double-click, Enter or right-click ends it anywhere · Esc cancels');
       return;
     }
 
@@ -242,8 +242,11 @@
       return;
     }
     const p = snapPoint(wp, e);
-    d.waypoints.push(p);
-    d.nodes.push(p);
+    const last = d.nodes[d.nodes.length - 1];
+    if (G.dist(last.x, last.y, p.x, p.y) > 1e-6) {
+      d.waypoints.push(p);
+      d.nodes.push(p);
+    }
     state.drag = { type: 'routePress', startScreen: screenPos(e) };
   }
 
@@ -347,6 +350,7 @@
     } else {
       const host = M.hostAt(state.doc, wp, tolWorld(4));
       d.cursor = host ? G.rectCenter(host) : snapPoint(wp, e);
+      d.hostId = host ? host.id : null;
       state.hover = host ? host.id : null;
     }
     app.invalidate();
@@ -490,6 +494,7 @@
         if (box && (box.w > 0.05 || box.h > 0.05)) {
           const picked = new Set(d.keep);
           for (const it of state.doc.items) {
+            if (!M.pickable(it)) continue;
             const b = M.bounds(state.doc, it);
             if (b && G.aabbOverlap(b, box)) picked.add(it.id);
           }
@@ -514,8 +519,14 @@
       case 'routePress': {
         const dr = state.draft;
         if (dr && dr.kind === 'route' && dragged(d, e)) {
-          const host = M.hostAt(state.doc, worldPos(e), tolWorld(4));
-          if (host && host.id !== (dr.from.item || null)) finishRoute(M.endpointOn(host.id));
+          const wp = worldPos(e);
+          const host = M.hostAt(state.doc, wp, tolWorld(4));
+          if (host) {
+            /* Releasing back inside the source is not a route — keep drawing. */
+            if (host.id !== (dr.from.item || null)) finishRoute(M.endpointOn(host.id));
+          } else {
+            endRouteAt(snapPoint(wp, e));
+          }
         }
         break;
       }
@@ -538,10 +549,15 @@
     let { x, y, w, h } = d.rect;
 
     if (d.mode === 'machine') {
-      const k = M.KINDS[state.activeKind] || M.KINDS.cnc;
-      if (w < 0.3 || h < 0.3) { w = k.w; h = k.h; x = d.start.x - w / 2; y = d.start.y - h / 2; }
-      const m = M.machine(state.activeKind, x, y, w, h);
-      m.label = nextName(k.name);
+      const type = M.typeById(state.doc, state.activeType);
+      if (w < 0.3 || h < 0.3) {
+        w = type ? type.w : 2;
+        h = type ? type.h : 2;
+        x = d.start.x - w / 2;
+        y = d.start.y - h / 2;
+      }
+      const m = M.machine(type, x, y, w, h);
+      m.label = nextName(type ? type.name : 'Machine');
       state.doc.items.push(m);
       setSelection([m.id]);
     } else if (d.mode === 'zone') {
@@ -600,6 +616,22 @@
     if (!state.stickyTool) app.setTool('select');
   }
 
+  /* Close an open route at a loose point rather than on a machine. */
+  function endRouteAt(point) {
+    const d = state.draft;
+    if (!d || d.kind !== 'route') return false;
+    const wps = d.waypoints;
+    while (wps.length && G.dist(wps[wps.length - 1].x, wps[wps.length - 1].y, point.x, point.y) < 1e-6) {
+      wps.pop();
+    }
+    const start = d.nodes[0];
+    if (!wps.length && d.from.item === undefined && G.dist(start.x, start.y, point.x, point.y) < 0.05) {
+      return false;                 /* zero-length: nothing worth keeping */
+    }
+    finishRoute(M.endpointAt(point.x, point.y));
+    return true;
+  }
+
   function cancelDraft() {
     state.draft = null;
     state.measure = null;
@@ -616,13 +648,13 @@
     if (state.draft.kind === 'wall') { finishWall(); return true; }
     if (state.draft.kind === 'route') {
       const d = state.draft;
-      if (d.waypoints.length) {
-        const last = d.waypoints[d.waypoints.length - 1];
-        d.waypoints = d.waypoints.slice(0, -1);
-        finishRoute(M.endpointAt(last.x, last.y));
-      } else {
-        cancelDraft();
+      const host = d.hostId ? M.byId(state.doc, d.hostId) : null;
+      if (host && host.id !== (d.from.item || null)) {
+        finishRoute(M.endpointOn(host.id));
+        return true;
       }
+      const end = d.cursor || d.waypoints[d.waypoints.length - 1];
+      if (!end || !endRouteAt({ x: end.x, y: end.y })) cancelDraft();
       return true;
     }
     return false;
@@ -633,6 +665,12 @@
   function onDblClick(e) {
     const wp = worldPos(e);
     if (state.draft && state.draft.kind === 'wall') { finishWall(); return; }
+    if (state.draft && state.draft.kind === 'route') {
+      const host = M.hostAt(state.doc, wp, tolWorld(4));
+      if (host && host.id !== (state.draft.from.item || null)) finishRoute(M.endpointOn(host.id));
+      else if (!endRouteAt(snapPoint(wp, e))) cancelDraft();
+      return;
+    }
 
     const hit = M.hitTest(state.doc, wp, tolWorld(5));
     if (!hit) return;

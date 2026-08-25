@@ -85,6 +85,14 @@
     for (const it of doc.items) if (it.type === 'route') drawItem(ctx, state, it, view);
     for (const it of doc.items) if (it.type === 'label') drawItem(ctx, state, it, view);
 
+    if (state.showSpecs) {
+      for (const it of doc.items) if (it.type === 'machine' && !it.hidden) drawSpecs(ctx, state, it);
+    }
+    if (state.showTimes) {
+      for (const it of doc.items) if (it.type === 'zone' && !it.hidden) drawZoneInfo(ctx, state, it);
+    }
+
+    drawRun(ctx, state);
     drawDraft(ctx, state);
     ctx.restore();
 
@@ -158,6 +166,7 @@
   /* ---------- items ---------- */
 
   function drawItem(ctx, state, it, view) {
+    if (it.hidden) return;
     const b = M.bounds(state.doc, it);
     if (b && !G.aabbOverlap(b, view)) return;
     switch (it.type) {
@@ -194,6 +203,7 @@
 
   function drawMachine(ctx, state, m) {
     const zoom = state.cam.zoom;
+    drawStepBadge(ctx, state, m);
     withRotation(ctx, m, () => {
       if (m.clearance > 0) {
         ctx.save();
@@ -228,7 +238,7 @@
       if (fit < 16) return;
 
       const cx = m.x + m.w / 2, cy = m.y + m.h / 2;
-      const kind = M.KINDS[m.kind];
+      const type = M.typeById(state.doc, m.kind);
       let fontPx = G.clamp(Math.min(m.h * zoom * 0.3, m.w * zoom * 0.16), 8, 15);
 
       ctx.save();
@@ -238,23 +248,54 @@
       ctx.textBaseline = 'middle';
 
       const maxW = m.w * zoom - 8;
-      const raw = m.label || (kind ? kind.name : 'Machine');
+      const raw = m.label || (type ? type.name : 'Machine');
       /* Shrink before truncating so short boxes still read. */
       const setFont = (px) => { ctx.font = '600 ' + px.toFixed(1) + 'px Inter, "Segoe UI", system-ui, sans-serif'; };
       setFont(fontPx);
       while (fontPx > 7.5 && ctx.measureText(raw).width > maxW) { fontPx -= 0.5; setFont(fontPx); }
       ctx.fillStyle = C.text;
       const line = ellipsize(ctx, raw, maxW);
-      const showSub = m.h * zoom > 34 && kind;
+      const showSub = m.h * zoom > 34;
       ctx.fillText(line, 0, showSub ? -fontPx * 0.55 : 0);
 
       if (showSub) {
+        /* Name the type too, but only when it adds something the label doesn't. */
+        const prefix = type && type.name !== raw ? type.name + ' · ' : '';
         ctx.font = (fontPx * 0.72).toFixed(1) + 'px Inter, "Segoe UI", system-ui, sans-serif';
         ctx.fillStyle = C.textDim;
-        ctx.fillText(ellipsize(ctx, kind.glyph + ' · ' + fmt(m.w) + '×' + fmt(m.h) + ' m', maxW), 0, fontPx * 0.62);
+        ctx.fillText(ellipsize(ctx, prefix + fmt(m.w) + '×' + fmt(m.h) + ' m', maxW), 0, fontPx * 0.62);
       }
       ctx.restore();
     });
+  }
+
+  /* Machines named in the written process carry their step numbers. */
+  function drawStepBadge(ctx, state, m) {
+    if (!state.showLabels) return;
+    const nums = M.stepsFor(state.doc, m.id);
+    if (!nums.length) return;
+    const zoom = state.cam.zoom;
+    if (zoom < 8) return;
+
+    const text = nums.length > 2 ? nums[0] + '+' : nums.join(',');
+    const corner = G.rectCorners(m)[1];
+
+    ctx.save();
+    ctx.translate(corner.x, corner.y);
+    ctx.scale(1 / zoom, 1 / zoom);
+    ctx.font = '700 10px Inter, "Segoe UI", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const w = Math.max(15, ctx.measureText(text).width + 9);
+    roundRect(ctx, -w / 2, -7.5, w, 15, 7.5);
+    ctx.fillStyle = C.accent;
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(text, 0, 0.5);
+    ctx.restore();
   }
 
   function drawZone(ctx, state, z) {
@@ -417,6 +458,201 @@
     ctx.textBaseline = 'middle';
     ctx.fillStyle = l.color;
     ctx.fillText(l.text, 0, 0);
+    ctx.restore();
+  }
+
+  /* Machine parameters — wash pressure, temperature and the like — as a card
+     tucked under the machine. */
+  function drawSpecs(ctx, state, m) {
+    const params = (m.params || []).filter((p) => p.k || p.v);
+    if (!params.length) return;
+    const zoom = state.cam.zoom;
+    if (zoom < 11) return;
+
+    const b = G.rectAABB(m);
+    const lineH = 12;
+    const padX = 6, padY = 5;
+
+    ctx.save();
+    ctx.translate(b.x + b.w / 2, b.y + b.h);
+    ctx.scale(1 / zoom, 1 / zoom);
+    ctx.font = '10px Inter, "Segoe UI", system-ui, sans-serif';
+
+    let wide = 0;
+    const rows = params.slice(0, 6).map((p) => {
+      const k = p.k ? p.k + ':' : '';
+      ctx.font = '600 10px Inter, "Segoe UI", system-ui, sans-serif';
+      const kw = ctx.measureText(k).width;
+      ctx.font = '10px Inter, "Segoe UI", system-ui, sans-serif';
+      const vw = ctx.measureText(p.v).width;
+      wide = Math.max(wide, kw + vw + 5);
+      return { k, v: p.v, kw };
+    });
+    const more = params.length - rows.length;
+    if (more > 0) wide = Math.max(wide, 60);
+
+    const w = wide + padX * 2;
+    const h = rows.length * lineH + (more > 0 ? lineH : 0) + padY * 2;
+
+    roundRect(ctx, -w / 2, 6, w, h, 5);
+    ctx.fillStyle = 'rgba(255,255,255,.94)';
+    ctx.fill();
+    ctx.strokeStyle = hexA(m.color, 0.6);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    let y = 6 + padY + lineH / 2;
+    for (const r of rows) {
+      ctx.font = '600 10px Inter, "Segoe UI", system-ui, sans-serif';
+      ctx.fillStyle = C.textDim;
+      ctx.fillText(r.k, -w / 2 + padX, y);
+      ctx.font = '10px Inter, "Segoe UI", system-ui, sans-serif';
+      ctx.fillStyle = C.text;
+      ctx.fillText(r.v, -w / 2 + padX + r.kw + 5, y);
+      y += lineH;
+    }
+    if (more > 0) {
+      ctx.font = 'italic 10px Inter, "Segoe UI", system-ui, sans-serif';
+      ctx.fillStyle = C.textDim;
+      ctx.fillText('+' + more + ' more', -w / 2 + padX, y);
+    }
+    ctx.restore();
+  }
+
+  /* What a zone does and how long it takes. */
+  function drawZoneInfo(ctx, state, z) {
+    const zoom = state.cam.zoom;
+    if (zoom < 9) return;
+    if (!z.duration && !z.process) return;
+
+    ctx.save();
+    ctx.translate(z.x + z.w, z.y);
+    ctx.scale(1 / zoom, 1 / zoom);
+    ctx.textBaseline = 'middle';
+
+    if (z.duration) {
+      const text = '⏱ ' + fmtTime(z.duration);
+      ctx.font = '700 11px Inter, "Segoe UI", system-ui, sans-serif';
+      ctx.textAlign = 'right';
+      const w = ctx.measureText(text).width + 14;
+      roundRect(ctx, -w - 4, 4, w, 19, 9.5);
+      ctx.fillStyle = hexA(z.color, 0.92);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillText(text, -11, 14);
+    }
+
+    if (z.process && z.w * zoom > 120) {
+      const line = z.process.split('\n')[0];
+      ctx.font = '11px Inter, "Segoe UI", system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      const maxW = z.w * zoom - 24;
+      const text = ellipsize(ctx, line, maxW);
+      const w = ctx.measureText(text).width + 12;
+      const x = -(z.w * zoom) + 4;
+      roundRect(ctx, x, 27, w, 18, 4);
+      ctx.fillStyle = 'rgba(255,255,255,.9)';
+      ctx.fill();
+      ctx.strokeStyle = hexA(z.color, 0.5);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = C.text;
+      ctx.fillText(text, x + 6, 36.5);
+    }
+    ctx.restore();
+  }
+
+  function fmtTime(minutes) {
+    if (minutes < 1) return Math.round(minutes * 60) + ' s';
+    if (minutes < 60) return fmt(minutes) + ' min';
+    const h = Math.floor(minutes / 60);
+    const m = Math.round(minutes - h * 60);
+    return m ? h + ' h ' + m + ' min' : h + ' h';
+  }
+  R.fmtTime = fmtTime;
+
+  /* ---------- the animated run ---------- */
+
+  function drawRun(ctx, state) {
+    const play = state.play;
+    if (!play || !play.path) return;
+    const path = play.path;
+    if (!path.stops.length) return;
+    const zoom = state.cam.zoom;
+
+    if (state.showRun) {
+      ctx.save();
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(79,156,249,.35)';
+      ctx.lineWidth = 0.5;
+      for (const leg of path.legs) {
+        ctx.beginPath();
+        ctx.moveTo(leg.pts[0].x, leg.pts[0].y);
+        for (let i = 1; i < leg.pts.length; i++) ctx.lineTo(leg.pts[i].x, leg.pts[i].y);
+        if (!leg.viaRoute) ctx.setLineDash([0.6, 0.4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      /* Number every stop so the order is readable while editing it. */
+      path.stops.forEach((s, i) => {
+        const c = M.isRect(s.item) ? G.rectCenter(s.item) : { x: s.item.x, y: s.item.y };
+        ctx.save();
+        ctx.translate(c.x, c.y);
+        ctx.scale(1 / zoom, 1 / zoom);
+        ctx.beginPath();
+        ctx.arc(0, -22, 10, 0, Math.PI * 2);
+        ctx.fillStyle = '#4f9cf9';
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = '#fff';
+        ctx.font = '700 11px Inter, "Segoe UI", system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(i + 1), 0, -21.5);
+        ctx.restore();
+      });
+      ctx.restore();
+    }
+
+    const at = play.at;
+    if (!at) return;
+
+    /* Ring the machine currently being worked on. */
+    if (at.stop && M.isRect(at.stop)) {
+      ctx.save();
+      ctx.strokeStyle = '#4f9cf9';
+      ctx.lineWidth = 3 / zoom;
+      ctx.setLineDash([0.5, 0.35]);
+      const pad = 0.3;
+      roundRect(ctx, at.stop.x - pad, at.stop.y - pad, at.stop.w + pad * 2, at.stop.h + pad * 2, 0.3);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.translate(at.x, at.y);
+    ctx.scale(1 / zoom, 1 / zoom);
+
+    if (at.working) {
+      ctx.beginPath();
+      ctx.arc(0, 0, 15, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * G.clamp(at.progress, 0, 1));
+      ctx.strokeStyle = 'rgba(79,156,249,.9)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    ctx.beginPath();
+    ctx.arc(0, 0, 8, 0, Math.PI * 2);
+    ctx.fillStyle = at.working ? '#f59e0b' : '#4f9cf9';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
     ctx.restore();
   }
 

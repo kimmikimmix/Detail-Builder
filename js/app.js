@@ -13,7 +13,7 @@
     doc: M.newDoc(),
     cam: { x: -4, y: -4, zoom: 26 },
     tool: 'select',
-    activeKind: 'cnc',
+    activeType: null,
     selection: new Set(),
     hover: null,
     drag: null,
@@ -26,6 +26,11 @@
     snapGuides: true,
     showGrid: true,
     showLabels: true,
+    showSpecs: false,
+    showTimes: false,
+    showRun: false,
+    focusMode: false,
+    play: { running: false, t: 0, path: null, duration: 0, at: null },
     stickyTool: false,
     spaceDown: false,
     wallThickness: 0.25,
@@ -40,7 +45,24 @@
 
   app.invalidate = () => { dirty = true; };
 
-  function frame() {
+  let lastFrame = 0;
+
+  function frame(now) {
+    const t = now || 0;
+    const dt = lastFrame ? Math.min(0.25, (t - lastFrame) / 1000) : 0;
+    lastFrame = t;
+
+    const play = state.play;
+    if (play.running && play.duration > 0) {
+      play.t += dt;
+      if (play.t >= play.duration) {
+        if (M.anim(state.doc).loop) play.t = play.t % play.duration;
+        else { play.t = play.duration; app.pauseRun(); }
+      }
+      updateRunReadout();
+      dirty = true;
+    }
+
     if (dirty) {
       dirty = false;
       R.draw(state);
@@ -52,6 +74,7 @@
 
   app.commit = () => {
     H.commit(state.doc);
+    app.rebuildRun();
     app.invalidate();
     FB.ui.refreshProps();
     FB.ui.refreshStats();
@@ -61,6 +84,11 @@
   app.refresh = () => {
     FB.ui.refreshProps();
     FB.ui.refreshStats();
+    FB.ui.refreshProcess();
+    FB.ui.refreshSpecs();
+    FB.ui.refreshZones();
+    FB.ui.refreshLayers();
+    FB.ui.refreshStops();
     app.refreshStatus();
     app.invalidate();
   };
@@ -122,7 +150,11 @@
     document.querySelectorAll('.tool').forEach((b) => b.classList.toggle('active', b.dataset.tool === tool));
     canvas.style.cursor = tool === 'pan' ? 'grab' : 'default';
     const hints = {
-      machine: 'Drag a box to place a ' + M.KINDS[state.activeKind].name,
+      machine: (() => {
+        const t = M.typeById(state.doc, state.activeType);
+        return t ? 'Drag a box to place a ' + t.name
+                 : 'Drag a box for an untyped machine — or define a type in the palette first';
+      })(),
       wall: 'Click each corner · Enter or double-click to finish',
       room: 'Drag out a rectangular room of walls',
       route: 'Click the source machine, then the destination',
@@ -138,7 +170,7 @@
   /* ---------- selection actions ---------- */
 
   app.selectAll = () => {
-    state.selection = new Set(state.doc.items.map((it) => it.id));
+    state.selection = new Set(state.doc.items.filter(M.pickable).map((it) => it.id));
     app.refresh();
   };
 
@@ -150,6 +182,7 @@
       for (const r of M.routesFor(state.doc, id)) ids.add(r.id);
     }
     state.doc.items = state.doc.items.filter((it) => !ids.has(it.id));
+    for (const st of (state.doc.process || [])) if (st.link && ids.has(st.link)) st.link = null;
     state.selection.clear();
     app.commit();
     app.refresh();
@@ -341,6 +374,386 @@
     app.toast('Cascaded ' + created.length + ' machine' + (created.length === 1 ? '' : 's'));
   };
 
+  /* ---------- layers ---------- */
+
+  app.setLocked = (ids, locked) => {
+    for (const id of ids) {
+      const it = M.byId(state.doc, id);
+      if (!it) continue;
+      it.locked = locked;
+      if (locked) state.selection.delete(id);
+    }
+    app.commit();
+    app.refresh();
+  };
+
+  app.setHidden = (ids, hidden) => {
+    for (const id of ids) {
+      const it = M.byId(state.doc, id);
+      if (!it) continue;
+      it.hidden = hidden;
+      if (hidden) state.selection.delete(id);
+    }
+    app.commit();
+    app.refresh();
+  };
+
+  app.moveItem = (id, dir) => {
+    const items = state.doc.items;
+    const i = items.findIndex((it) => it.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= items.length) return;
+    [items[i], items[j]] = [items[j], items[i]];
+    app.commit();
+    app.refresh();
+  };
+
+  app.lockAll = (locked) => {
+    for (const it of state.doc.items) it.locked = locked;
+    if (locked) state.selection.clear();
+    app.commit();
+    app.refresh();
+    app.toast(locked ? 'Every layer locked' : 'Every layer unlocked');
+  };
+
+  app.showAll = () => {
+    let n = 0;
+    for (const it of state.doc.items) if (it.hidden) { it.hidden = false; n++; }
+    app.commit();
+    app.refresh();
+    app.toast(n ? n + ' layer' + (n === 1 ? '' : 's') + ' shown again' : 'Nothing was hidden');
+  };
+
+  /* ---------- animated run ---------- */
+
+  app.rebuildRun = () => {
+    const play = state.play;
+    play.path = M.animPath(state.doc);
+    play.duration = M.animDuration(state.doc, play.path);
+    if (play.t > play.duration) play.t = 0;
+    updateRunReadout();
+  };
+
+  function updateRunReadout() {
+    const play = state.play;
+    play.at = play.path && play.path.stops.length ? M.animAt(state.doc, play.path, play.t) : null;
+
+    const time = document.getElementById('runTime');
+    if (time) {
+      time.textContent = play.duration > 0
+        ? R.fmt(play.t) + ' / ' + R.fmt(play.duration) + ' s'
+        : (play.path && play.path.stops.length ? 'no travel time' : 'no run yet');
+    }
+    const scrub = document.getElementById('runScrub');
+    if (scrub && document.activeElement !== scrub) {
+      scrub.value = play.duration > 0 ? Math.round((play.t / play.duration) * 1000) : 0;
+    }
+    if (play.at) FB.ui.markCurrentStop(play.at.stop ? play.at.index : -1);
+  }
+
+  app.playRun = () => {
+    const play = state.play;
+    if (!play.path || !play.path.stops.length) { app.toast('Add some stops to the run first'); return; }
+    if (play.duration <= 0) { app.toast('Give the stops some work time, or space them out'); return; }
+    play.running = true;
+    setPlayButton();
+    app.invalidate();
+  };
+
+  app.pauseRun = () => {
+    state.play.running = false;
+    setPlayButton();
+    app.invalidate();
+  };
+
+  app.toggleRun = () => (state.play.running ? app.pauseRun() : app.playRun());
+
+  app.restartRun = () => {
+    state.play.t = 0;
+    updateRunReadout();
+    app.invalidate();
+  };
+
+  function setPlayButton() {
+    const b = document.getElementById('btnPlay');
+    if (b) b.textContent = state.play.running ? '❚❚ Pause' : '▶ Play';
+  }
+
+  app.buildRun = () => {
+    const order = M.buildRunFromRoutes(state.doc);
+    if (!order.length) { app.toast('No routes to follow — draw some first'); return; }
+    const anim = M.anim(state.doc);
+    anim.stops = order.map((id) => {
+      const existing = anim.stops.find((st) => st.item === id);
+      return M.stop(id, existing ? existing.dwell : 1);
+    });
+    state.play.t = 0;
+    app.commit();
+    app.refresh();
+    app.toast('Run built from ' + order.length + ' stops');
+  };
+
+  app.addStop = () => {
+    const anim = M.anim(state.doc);
+    const picked = state.doc.items.filter((it) => state.selection.has(it.id) && (it.type === 'machine' || it.type === 'zone'));
+    if (!picked.length) { app.toast('Select a machine or zone first'); return; }
+    for (const it of picked) anim.stops.push(M.stop(it.id, 1));
+    app.commit();
+    app.refresh();
+  };
+
+  app.removeStop = (i) => {
+    const anim = M.anim(state.doc);
+    anim.stops.splice(i, 1);
+    state.play.t = 0;
+    app.commit();
+    app.refresh();
+  };
+
+  app.moveStop = (i, dir) => {
+    const anim = M.anim(state.doc);
+    const j = i + dir;
+    if (j < 0 || j >= anim.stops.length) return;
+    [anim.stops[i], anim.stops[j]] = [anim.stops[j], anim.stops[i]];
+    app.commit();
+    app.refresh();
+  };
+
+  /* ---------- machine types ---------- */
+
+  let editingType = null;
+
+  app.openTypeEditor = (typeId) => {
+    const t = M.typeById(state.doc, typeId);
+    editingType = t ? t.id : null;
+
+    document.getElementById('typeModalTitle').textContent = t ? 'Edit machine type' : 'New machine type';
+    document.getElementById('typeName').value = t ? t.name : '';
+    document.getElementById('typeW').value = t ? R.fmt(t.w) : '3';
+    document.getElementById('typeH').value = t ? R.fmt(t.h) : '2';
+    document.getElementById('typeColor').value = t ? t.color : M.nextTypeColor(state.doc);
+
+    const used = t ? M.machinesOfType(state.doc, t.id).length : 0;
+    const applyRow = document.getElementById('typeApplyRow');
+    applyRow.classList.toggle('hidden', used === 0);
+    document.getElementById('typeUseCount').textContent = String(used);
+    document.getElementById('typeApply').checked = false;
+    document.getElementById('btnTypeDelete').classList.toggle('hidden', !t);
+    document.getElementById('typeNote').textContent = t && used
+      ? 'Deleting this type leaves those ' + used + ' machines exactly as they are — they just stop being typed.'
+      : 'Types are saved inside the layout, so a file always carries the machines it was drawn with.';
+
+    document.getElementById('typeModal').classList.remove('hidden');
+    const name = document.getElementById('typeName');
+    setTimeout(() => { name.focus(); name.select(); }, 0);
+  };
+
+  app.closeTypeEditor = () => {
+    document.getElementById('typeModal').classList.add('hidden');
+    editingType = null;
+  };
+
+  app.saveType = () => {
+    const name = document.getElementById('typeName').value.trim();
+    const w = Math.max(0.2, parseFloat(document.getElementById('typeW').value) || 2);
+    const h = Math.max(0.2, parseFloat(document.getElementById('typeH').value) || 2);
+    const color = document.getElementById('typeColor').value;
+    if (!name) { app.toast('Give the type a name'); document.getElementById('typeName').focus(); return; }
+
+    const existing = M.typeById(state.doc, editingType);
+    if (existing) {
+      existing.name = name;
+      existing.w = w;
+      existing.h = h;
+      existing.color = color;
+      if (document.getElementById('typeApply').checked) {
+        for (const m of M.machinesOfType(state.doc, existing.id)) {
+          m.color = color;
+          m.w = w;
+          m.h = h;
+        }
+      }
+      app.toast('Type updated');
+    } else {
+      const t = M.type(name, w, h, color);
+      M.types(state.doc).push(t);
+      state.activeType = t.id;
+      app.toast('“' + name + '” added — pick it and drag a box');
+    }
+
+    app.closeTypeEditor();
+    app.commit();
+    FB.ui.buildPalette();
+    app.refresh();
+  };
+
+  app.deleteType = () => {
+    const t = M.typeById(state.doc, editingType);
+    if (!t) return;
+    const used = M.machinesOfType(state.doc, t.id);
+    state.doc.types = M.types(state.doc).filter((x) => x.id !== t.id);
+    /* The machines keep their own size, colour and name — only the link goes. */
+    for (const m of used) m.kind = null;
+    if (state.activeType === t.id) state.activeType = null;
+    app.closeTypeEditor();
+    app.commit();
+    FB.ui.buildPalette();
+    app.refresh();
+    app.toast(used.length ? 'Type removed — ' + used.length + ' machines kept as they are' : 'Type removed');
+  };
+
+  /* Turn a box already on the floor into a reusable type. */
+  app.saveMachineAsType = (m) => {
+    const t = M.type(m.label || 'Machine', m.w, m.h, m.color);
+    M.types(state.doc).push(t);
+    m.kind = t.id;
+    state.activeType = t.id;
+    app.commit();
+    FB.ui.buildPalette();
+    app.refresh();
+    app.toast('Saved “' + t.name + '” as a type');
+  };
+
+  /* ---------- process steps ---------- */
+
+  function steps() {
+    if (!Array.isArray(state.doc.process)) state.doc.process = [];
+    return state.doc.process;
+  }
+
+  app.addStep = (fromSelection) => {
+    const list = steps();
+    const step = M.step();
+    if (fromSelection && state.selection.size === 1) {
+      const it = M.byId(state.doc, [...state.selection][0]);
+      if (it) {
+        step.link = it.id;
+        step.title = it.label || it.text || '';
+      }
+    }
+    list.push(step);
+    app.commit();
+    showPane('process');
+    FB.ui.refreshProcess();
+    FB.ui.focusStep(list.length - 1);
+  };
+
+  app.removeStep = (i) => {
+    const list = steps();
+    if (i < 0 || i >= list.length) return;
+    list.splice(i, 1);
+    app.commit();
+    FB.ui.refreshProcess();
+  };
+
+  app.duplicateStep = (i) => {
+    const list = steps();
+    const src = list[i];
+    if (!src) return;
+    const copy = M.step(src.title, src.details, src.link);
+    list.splice(i + 1, 0, copy);
+    app.commit();
+    FB.ui.refreshProcess();
+    FB.ui.focusStep(i + 1);
+  };
+
+  app.moveStep = (i, dir) => {
+    const list = steps();
+    const j = i + dir;
+    if (j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j], list[i]];
+    app.commit();
+    FB.ui.refreshProcess();
+  };
+
+  app.linkStep = (i, itemId) => {
+    const st = steps()[i];
+    if (!st) return;
+    st.link = itemId;
+    app.commit();
+    FB.ui.refreshProcess();
+  };
+
+  /* Select an item and bring it into view without changing zoom. */
+  app.focusItem = (id) => {
+    const it = M.byId(state.doc, id);
+    if (!it) return;
+    const b = M.bounds(state.doc, it);
+    state.selection = new Set([id]);
+    if (b) {
+      state.cam.x = b.x + b.w / 2 - R.width / 2 / state.cam.zoom;
+      state.cam.y = b.y + b.h / 2 - (R.height - 26) / 2 / state.cam.zoom;
+    }
+    app.refresh();
+  };
+
+  app.exportSteps = () => {
+    const list = steps();
+    if (!list.length) { app.toast('No steps written yet'); return; }
+    const lines = ['# ' + (state.doc.name || 'Factory layout') + ' — process', ''];
+    list.forEach((st, i) => {
+      const host = st.link ? M.byId(state.doc, st.link) : null;
+      const where = host ? '  \n*At: ' + (host.label || host.text || host.type) + '*' : '';
+      lines.push('## ' + (i + 1) + '. ' + (st.title || 'Untitled step') + where);
+      lines.push('');
+      if (st.details.trim()) { lines.push(st.details.trim()); lines.push(''); }
+    });
+    download(new Blob([lines.join('\n')], { type: 'text/markdown' }), slug(state.doc.name) + '-process.md');
+    app.toast('Process exported');
+  };
+
+  const PANES = ['design', 'process', 'layers', 'play'];
+
+  function showPane(name) {
+    document.querySelectorAll('#sideTabs .tab').forEach((t) => t.classList.toggle('active', t.dataset.pane === name));
+    for (const p of PANES) {
+      const node = document.getElementById('pane' + p[0].toUpperCase() + p.slice(1));
+      if (node) node.classList.toggle('hidden', p !== name);
+    }
+    /* Seeing the run's shape only matters while you are editing it. */
+    state.showRun = name === 'play';
+    if (state.focusMode) app.setFocusMode(false);
+    app.invalidate();
+  }
+  app.showPane = showPane;
+
+  app.openFold = (name) => {
+    const fold = document.querySelector('.fold[data-fold="' + name + '"]');
+    if (fold) fold.classList.add('open');
+  };
+
+  /* Resizing the canvas would otherwise slide the drawing sideways, so pin
+     whatever is in the middle of the view. */
+  function keepingCentre(fn) {
+    const before = R.toWorld(state.cam, R.width / 2, R.height / 2);
+    fn();
+    setTimeout(() => {
+      R.resize();
+      const after = R.toWorld(state.cam, R.width / 2, R.height / 2);
+      state.cam.x += before.x - after.x;
+      state.cam.y += before.y - after.y;
+      app.invalidate();
+    }, 0);
+  }
+  app.keepingCentre = keepingCentre;
+
+  app.setFocusMode = (on) => {
+    keepingCentre(() => {
+      state.focusMode = on;
+      document.body.classList.toggle('focus', on);
+      const btn = document.getElementById('btnFocus');
+      if (btn) btn.classList.toggle('on', on);
+    });
+  };
+
+  app.toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => app.toast('Full screen was blocked by the browser'));
+    }
+  };
+
   /* ---------- view ---------- */
 
   app.zoomBy = (factor, centerScreen) => {
@@ -444,6 +857,14 @@
     state.draft = null;
     state.measure = null;
     document.getElementById('docName').value = doc.name;
+    if (!Array.isArray(state.doc.process)) state.doc.process = [];
+    if (!M.typeById(doc, state.activeType)) state.activeType = null;
+    FB.ui.buildPalette();
+    syncRunControls();
+    state.play.running = false;
+    state.play.t = 0;
+    app.rebuildRun();
+    setPlayButton();
     H.reset(doc);
     app.zoomFit();
     app.refresh();
@@ -555,6 +976,15 @@
       return;
     }
 
+    if (e.key === 'F2' && state.selection.size === 1) {
+      const it = M.byId(state.doc, [...state.selection][0]);
+      if (it && (it.type === 'machine' || it.type === 'zone' || it.type === 'label')) {
+        e.preventDefault();
+        app.editLabel(it);
+        return;
+      }
+    }
+
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       app.deleteSelection();
@@ -570,6 +1000,8 @@
       return;
     }
 
+    if (e.key === '\\') { e.preventDefault(); app.setFocusMode(!state.focusMode); return; }
+    if (e.key === 'p' || e.key === 'P') { app.toggleRun(); return; }
     if (e.key === '[') { app.reorder(-1); return; }
     if (e.key === ']') { app.reorder(1); return; }
     if (e.key === '?') { toggleHelp(true); return; }
@@ -599,6 +1031,7 @@
     if (!doc) return;
     state.doc = doc;
     pruneSelection();
+    afterDocSwap();
     document.getElementById('docName').value = doc.name;
     app.refresh();
     scheduleSave();
@@ -609,10 +1042,29 @@
     if (!doc) return;
     state.doc = doc;
     pruneSelection();
+    afterDocSwap();
     document.getElementById('docName').value = doc.name;
     app.refresh();
     scheduleSave();
   };
+
+  function syncRunControls() {
+    const anim = M.anim(state.doc);
+    const speed = document.getElementById('runSpeed');
+    if (speed) {
+      speed.value = anim.speed;
+      document.getElementById('runSpeedVal').textContent = R.fmt(anim.speed) + ' m/s';
+    }
+    const loop = document.getElementById('runLoop');
+    if (loop) loop.checked = anim.loop !== false;
+  }
+
+  function afterDocSwap() {
+    if (!M.typeById(state.doc, state.activeType)) state.activeType = null;
+    FB.ui.buildPalette();
+    syncRunControls();
+    app.rebuildRun();
+  }
 
   function pruneSelection() {
     const ids = new Set(state.doc.items.map((it) => it.id));
@@ -638,7 +1090,10 @@
 
     document.getElementById('btnNew').addEventListener('click', () => {
       if (state.doc.items.length && !confirm('Start a new layout? Anything unsaved is lost.')) return;
-      setDoc(M.newDoc(), 'New layout');
+      const fresh = M.newDoc();
+      /* Carry the machine types over — they are the user's own library. */
+      fresh.types = M.types(state.doc).map((t) => JSON.parse(JSON.stringify(t)));
+      setDoc(fresh, 'New layout');
     });
     document.getElementById('btnOpen').addEventListener('click', () => document.getElementById('fileInput').click());
     document.getElementById('fileInput').addEventListener('change', (e) => {
@@ -652,6 +1107,44 @@
     document.getElementById('btnRedo').addEventListener('click', app.redo);
 
     document.getElementById('chkSticky').addEventListener('change', (e) => { state.stickyTool = e.target.checked; });
+    document.getElementById('chkSpecs').addEventListener('change', (e) => { state.showSpecs = e.target.checked; app.invalidate(); });
+    document.getElementById('chkTimes').addEventListener('change', (e) => { state.showTimes = e.target.checked; app.invalidate(); });
+
+    document.getElementById('btnFocus').addEventListener('click', () => app.setFocusMode(!state.focusMode));
+    document.getElementById('btnFullscreen').addEventListener('click', app.toggleFullscreen);
+
+    document.querySelectorAll('.fold-head').forEach((head) => {
+      head.addEventListener('click', () => head.parentElement.classList.toggle('open'));
+    });
+
+    document.getElementById('btnLockAll').addEventListener('click', () => app.lockAll(true));
+    document.getElementById('btnUnlockAll').addEventListener('click', () => app.lockAll(false));
+    document.getElementById('btnShowAll').addEventListener('click', app.showAll);
+
+    document.getElementById('btnPlay').addEventListener('click', app.toggleRun);
+    document.getElementById('btnRestart').addEventListener('click', app.restartRun);
+    document.getElementById('btnBuildRun').addEventListener('click', app.buildRun);
+    document.getElementById('btnAddStop').addEventListener('click', app.addStop);
+    document.getElementById('runScrub').addEventListener('input', (e) => {
+      const play = state.play;
+      if (play.duration > 0) {
+        play.t = (Number(e.target.value) / 1000) * play.duration;
+        updateRunReadout();
+        app.invalidate();
+      }
+    });
+    const speed = document.getElementById('runSpeed');
+    speed.addEventListener('input', () => {
+      M.anim(state.doc).speed = Number(speed.value);
+      document.getElementById('runSpeedVal').textContent = speed.value + ' m/s';
+      app.rebuildRun();
+      app.invalidate();
+    });
+    speed.addEventListener('change', () => app.commit());
+    document.getElementById('runLoop').addEventListener('change', (e) => {
+      M.anim(state.doc).loop = e.target.checked;
+      app.commit();
+    });
     document.getElementById('chkGrid').addEventListener('change', (e) => { state.showGrid = e.target.checked; app.invalidate(); });
     document.getElementById('chkSnap').addEventListener('change', (e) => { state.snap = e.target.checked; });
     document.getElementById('chkLabels').addEventListener('change', (e) => { state.showLabels = e.target.checked; app.invalidate(); });
@@ -661,10 +1154,43 @@
     document.getElementById('btnZoomReset').addEventListener('click', () => app.zoomBy(26 / state.cam.zoom));
     document.getElementById('btnFit').addEventListener('click', app.zoomFit);
 
+    document.getElementById('sideTabs').addEventListener('click', (e) => {
+      const tab = e.target.closest('.tab');
+      if (tab) showPane(tab.dataset.pane);
+    });
+    document.getElementById('btnAddStep').addEventListener('click', () => app.addStep(false));
+    document.getElementById('btnStepFromSel').addEventListener('click', () => app.addStep(true));
+    document.getElementById('btnStepsMd').addEventListener('click', app.exportSteps);
+    document.getElementById('btnWide').addEventListener('click', () => {
+      const side = document.querySelector('.sidebar.right');
+      const before = R.toWorld(state.cam, R.width / 2, R.height / 2);
+      side.classList.toggle('wide');
+      /* The canvas keeps its flex width, so re-measure after the transition. */
+      setTimeout(() => {
+        R.resize();
+        const after = R.toWorld(state.cam, R.width / 2, R.height / 2);
+        state.cam.x += before.x - after.x;
+        state.cam.y += before.y - after.y;
+        app.invalidate();
+      }, 180);
+    });
+
     document.getElementById('btnCascade').addEventListener('click', app.cascade);
     document.getElementById('btnSample').addEventListener('click', () => {
       if (state.doc.items.length && !confirm('Replace the current layout with the example?')) return;
       setDoc(FB.sample(), 'Example layout loaded');
+    });
+
+    document.getElementById('btnNewType').addEventListener('click', () => app.openTypeEditor(null));
+    document.getElementById('btnTypeSave').addEventListener('click', app.saveType);
+    document.getElementById('btnTypeDelete').addEventListener('click', app.deleteType);
+    document.getElementById('btnTypeClose').addEventListener('click', app.closeTypeEditor);
+    document.getElementById('typeModal').addEventListener('click', (e) => {
+      if (e.target.id === 'typeModal') app.closeTypeEditor();
+    });
+    document.getElementById('typeModal').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); app.saveType(); }
+      if (e.key === 'Escape') { e.preventDefault(); app.closeTypeEditor(); }
     });
 
     document.getElementById('btnHelp').addEventListener('click', () => toggleHelp(true));
@@ -680,15 +1206,15 @@
     wrap.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
     wrap.addEventListener('drop', (e) => {
       e.preventDefault();
-      const kind = e.dataTransfer.getData('text/plain');
-      if (!M.KINDS[kind]) return;
+      const typeId = e.dataTransfer.getData('text/plain');
+      const t = M.typeById(state.doc, typeId);
+      if (!t) return;
       const rect = canvas.getBoundingClientRect();
       const wp = R.toWorld(state.cam, e.clientX - rect.left, e.clientY - rect.top);
-      const k = M.KINDS[kind];
-      const x = state.snap ? G.snap(wp.x - k.w / 2, state.doc.grid) : wp.x - k.w / 2;
-      const y = state.snap ? G.snap(wp.y - k.h / 2, state.doc.grid) : wp.y - k.h / 2;
-      const m = M.machine(kind, x, y);
-      m.label = FB.tools.nextName(k.name);
+      const x = state.snap ? G.snap(wp.x - t.w / 2, state.doc.grid) : wp.x - t.w / 2;
+      const y = state.snap ? G.snap(wp.y - t.h / 2, state.doc.grid) : wp.y - t.h / 2;
+      const m = M.machine(t, x, y);
+      m.label = FB.tools.nextName(t.name);
       state.doc.items.push(m);
       state.selection = new Set([m.id]);
       app.commit();

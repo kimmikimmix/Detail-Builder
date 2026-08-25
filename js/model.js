@@ -7,25 +7,13 @@
 
   M.VERSION = 1;
 
-  /* Machine catalogue. Sizes are in metres. */
-  M.KINDS = {
-    cnc:      { name: 'CNC Machine',      w: 3,   h: 2,   color: '#3b82f6', glyph: 'CNC' },
-    lathe:    { name: 'Lathe',            w: 2.5, h: 1.5, color: '#0ea5e9', glyph: 'LTH' },
-    press:    { name: 'Press',            w: 2,   h: 2,   color: '#6366f1', glyph: 'PRS' },
-    molder:   { name: 'Injection Molder', w: 4,   h: 2,   color: '#8b5cf6', glyph: 'IMM' },
-    robot:    { name: 'Robot Cell',       w: 3,   h: 3,   color: '#a855f7', glyph: 'RBT' },
-    assembly: { name: 'Assembly Station', w: 3,   h: 1.5, color: '#10b981', glyph: 'ASM' },
-    conveyor: { name: 'Conveyor',         w: 6,   h: 0.8, color: '#f59e0b', glyph: 'CNV' },
-    oven:     { name: 'Oven / Furnace',   w: 4,   h: 2.5, color: '#ef4444', glyph: 'OVN' },
-    paint:    { name: 'Paint Booth',      w: 5,   h: 4,   color: '#ec4899', glyph: 'PNT' },
-    qc:       { name: 'QC / Inspection',  w: 2.5, h: 2,   color: '#14b8a6', glyph: 'QC'  },
-    packing:  { name: 'Packing Station',  w: 3,   h: 2,   color: '#84cc16', glyph: 'PCK' },
-    rack:     { name: 'Storage Rack',     w: 6,   h: 1.2, color: '#64748b', glyph: 'RCK' },
-    buffer:   { name: 'WIP Buffer',       w: 2,   h: 2,   color: '#94a3b8', glyph: 'WIP' },
-    dock:     { name: 'Loading Dock',     w: 4,   h: 3,   color: '#0f766e', glyph: 'DCK' },
-    office:   { name: 'Office / Desk',    w: 2,   h: 1.5, color: '#78716c', glyph: 'OFF' },
-    utility:  { name: 'Utility / Panel',  w: 1.5, h: 1,   color: '#475569', glyph: 'UTL' },
-  };
+  /* Machines have no built-in catalogue — every type is one the user defines
+     and lives in the document, so a layout file carries its own palette. */
+  M.DEFAULT_TYPE_COLORS = [
+    '#3b82f6', '#10b981', '#f59e0b', '#a855f7', '#ef4444', '#0ea5e9',
+    '#84cc16', '#ec4899', '#14b8a6', '#6366f1', '#f97316', '#64748b',
+  ];
+  M.UNTYPED_COLOR = '#64748b';
 
   M.ZONE_COLORS = ['#4f9cf9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#64748b'];
 
@@ -37,27 +25,84 @@
     name: 'Untitled Factory',
     grid: 1,
     unit: 'm',
+    types: [],
     items: [],
+    process: [],
+    animation: { stops: [], speed: 6, loop: true },
   });
+
+  /* One stop on the animated run: an item to visit and how long work takes
+     there, in seconds. */
+  M.stop = (itemId, dwell) => ({ item: itemId, dwell: dwell === undefined ? 1 : Math.max(0, dwell) });
+
+  M.anim = (doc) => {
+    if (!doc.animation || typeof doc.animation !== 'object') doc.animation = { stops: [], speed: 6, loop: true };
+    if (!Array.isArray(doc.animation.stops)) doc.animation.stops = [];
+    return doc.animation;
+  };
+
+  /* ---------- machine types ---------- */
+
+  M.type = (name, w, h, color) => ({
+    id: M.uid(),
+    name: name || 'New machine',
+    w: Math.max(0.2, Number(w) || 2),
+    h: Math.max(0.2, Number(h) || 2),
+    color: color || M.DEFAULT_TYPE_COLORS[0],
+  });
+
+  M.types = (doc) => {
+    if (!Array.isArray(doc.types)) doc.types = [];
+    return doc.types;
+  };
+
+  M.typeById = (doc, id) => (id ? M.types(doc).find((t) => t.id === id) || null : null);
+
+  /* A colour that is not already in heavy use, for the next new type. */
+  M.nextTypeColor = (doc) => {
+    const used = new Set(M.types(doc).map((t) => t.color));
+    return M.DEFAULT_TYPE_COLORS.find((c) => !used.has(c)) ||
+      M.DEFAULT_TYPE_COLORS[M.types(doc).length % M.DEFAULT_TYPE_COLORS.length];
+  };
+
+  M.machinesOfType = (doc, id) => doc.items.filter((it) => it.type === 'machine' && it.kind === id);
+
+  /* A written process step, optionally tied to an item on the floor. */
+  M.step = (title, details, link) => ({
+    id: M.uid(),
+    title: title || '',
+    details: details || '',
+    link: link || null,
+  });
+
+  /* Step numbers (1-based) that point at a given item. */
+  M.stepsFor = (doc, id) => {
+    const out = [];
+    (doc.process || []).forEach((st, i) => { if (st.link === id) out.push(i + 1); });
+    return out;
+  };
 
   /* ---------- factories ---------- */
 
-  M.machine = (kind, x, y, w, h) => {
-    const k = M.KINDS[kind] || M.KINDS.cnc;
-    return {
-      id: M.uid(),
-      type: 'machine',
-      kind,
-      x, y,
-      w: w || k.w,
-      h: h || k.h,
-      rot: 0,
-      label: k.name,
-      color: k.color,
-      clearance: 0,
-      notes: '',
-    };
-  };
+  /* `type` is a type object from doc.types, or null for a plain box. */
+  M.machine = (type, x, y, w, h) => ({
+    id: M.uid(),
+    type: 'machine',
+    kind: type ? type.id : null,
+    x, y,
+    w: w || (type ? type.w : 2),
+    h: h || (type ? type.h : 2),
+    rot: 0,
+    label: type ? type.name : 'Machine',
+    color: type ? type.color : M.UNTYPED_COLOR,
+    clearance: 0,
+    notes: '',
+    params: [],          /* [{ k: 'Wash pressure', v: '120 bar' }] */
+    locked: false,
+    hidden: false,
+  });
+
+  M.param = (k, v) => ({ k: k || '', v: v || '' });
 
   M.wall = (points, thickness) => ({
     id: M.uid(),
@@ -66,6 +111,8 @@
     thickness: thickness || 0.25,
     closed: false,
     color: '#3f4756',
+    locked: false,
+    hidden: false,
   });
 
   M.zone = (x, y, w, h, label) => ({
@@ -76,6 +123,10 @@
     label: label || 'Zone',
     color: '#4f9cf9',
     hatch: false,
+    process: '',         /* what happens here, and when */
+    duration: 0,         /* minutes of process time */
+    locked: false,
+    hidden: false,
   });
 
   M.label = (x, y, text) => ({
@@ -86,6 +137,8 @@
     size: 0.8,
     color: '#1f2937',
     rot: 0,
+    locked: false,
+    hidden: false,
   });
 
   M.route = (from, to, waypoints) => ({
@@ -99,6 +152,8 @@
     dashed: false,
     arrows: 'end',           /* 'end' | 'both' | 'none' */
     label: '',
+    locked: false,
+    hidden: false,
   });
 
   /* An endpoint is either { item: id } (docked to a machine/zone) or { x, y }. */
@@ -220,9 +275,12 @@
   /* ---------- hit testing ---------- */
 
   /* tol is in world units and should scale with zoom. */
+  M.pickable = (it) => !it.locked && !it.hidden;
+
   M.hitTest = (doc, p, tol) => {
     for (let i = doc.items.length - 1; i >= 0; i--) {
       const it = doc.items[i];
+      if (!M.pickable(it)) continue;
       if (M.hits(doc, it, p, tol)) return it;
     }
     return null;
@@ -262,7 +320,7 @@
     const pad = tol || 0;
     for (let i = doc.items.length - 1; i >= 0; i--) {
       const it = doc.items[i];
-      if (it.type === 'machine' && G.pointInRect(p, it, pad)) return it;
+      if (it.type === 'machine' && !it.hidden && G.pointInRect(p, it, pad)) return it;
     }
     return null;
   };
@@ -322,6 +380,16 @@
     const doc = M.newDoc();
     doc.name = typeof raw.name === 'string' ? raw.name : doc.name;
     doc.grid = Number(raw.grid) > 0 ? Number(raw.grid) : 1;
+
+    if (Array.isArray(raw.types)) {
+      for (const t of raw.types) {
+        if (!t || typeof t !== 'object') continue;
+        const type = M.type(str(t.name, 'Machine'), num(t.w, 2), num(t.h, 2), str(t.color, M.DEFAULT_TYPE_COLORS[0]));
+        if (typeof t.id === 'string' && t.id) type.id = t.id;
+        doc.types.push(type);
+      }
+    }
+
     const seen = new Set();
     for (const it of raw.items) {
       const clean = M.sanitize(it, seen);
@@ -333,11 +401,46 @@
       const okEnd = (e) => e && (!e.item || seen.has(e.item));
       return okEnd(it.from) && okEnd(it.to);
     });
+
+    if (!doc.types.length) deriveTypes(doc);
+
+    const anim = M.anim(doc);
+    if (raw.animation && typeof raw.animation === 'object') {
+      anim.speed = Math.max(0.5, num(raw.animation.speed, 6));
+      anim.loop = raw.animation.loop !== false;
+      if (Array.isArray(raw.animation.stops)) {
+        for (const st of raw.animation.stops) {
+          if (!st || typeof st !== 'object' || !seen.has(st.item)) continue;
+          anim.stops.push(M.stop(st.item, num(st.dwell, 1)));
+        }
+      }
+    }
+
+    if (Array.isArray(raw.process)) {
+      for (const st of raw.process) {
+        if (!st || typeof st !== 'object') continue;
+        const step = M.step(
+          typeof st.title === 'string' ? st.title : '',
+          typeof st.details === 'string' ? st.details : '',
+          typeof st.link === 'string' && seen.has(st.link) ? st.link : null
+        );
+        if (typeof st.id === 'string' && st.id) step.id = st.id;
+        doc.process.push(step);
+      }
+    }
     return doc;
   };
 
   const num = (v, fallback) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
   const str = (v, fallback) => (typeof v === 'string' ? v : fallback);
+
+  /* Flags every item shares. Missing ones default to false, so files written
+     before locking existed load unchanged. */
+  const flags = (out, raw) => {
+    out.locked = !!raw.locked;
+    out.hidden = !!raw.hidden;
+    return out;
+  };
 
   M.sanitize = (it, seen) => {
     if (!it || typeof it !== 'object') return null;
@@ -345,15 +448,21 @@
     if (!id || (seen && seen.has(id))) id = M.uid();
     switch (it.type) {
       case 'machine': {
-        const kind = M.KINDS[it.kind] ? it.kind : 'cnc';
-        const base = M.machine(kind, num(it.x, 0), num(it.y, 0), Math.max(0.2, num(it.w, 0) || M.KINDS[kind].w), Math.max(0.2, num(it.h, 0) || M.KINDS[kind].h));
+        const base = M.machine(null, num(it.x, 0), num(it.y, 0),
+          Math.max(0.2, num(it.w, 2)), Math.max(0.2, num(it.h, 2)));
         base.id = id;
+        base.kind = typeof it.kind === 'string' && it.kind ? it.kind : null;
         base.rot = num(it.rot, 0);
         base.label = str(it.label, base.label);
         base.color = str(it.color, base.color);
         base.clearance = Math.max(0, num(it.clearance, 0));
         base.notes = str(it.notes, '');
-        return base;
+        base.params = Array.isArray(it.params)
+          ? it.params.filter((p) => p && typeof p === 'object')
+              .map((p) => M.param(str(p.k, ''), str(p.v, '')))
+              .filter((p) => p.k || p.v)
+          : [];
+        return flags(base, it);
       }
       case 'zone': {
         const z = M.zone(num(it.x, 0), num(it.y, 0), Math.max(0.5, num(it.w, 4)), Math.max(0.5, num(it.h, 4)), str(it.label, 'Zone'));
@@ -361,7 +470,9 @@
         z.rot = num(it.rot, 0);
         z.color = str(it.color, z.color);
         z.hatch = !!it.hatch;
-        return z;
+        z.process = str(it.process, '');
+        z.duration = Math.max(0, num(it.duration, 0));
+        return flags(z, it);
       }
       case 'wall': {
         if (!Array.isArray(it.points) || it.points.length < 2) return null;
@@ -373,7 +484,7 @@
         w.id = id;
         w.closed = !!it.closed;
         w.color = str(it.color, w.color);
-        return w;
+        return flags(w, it);
       }
       case 'label': {
         const l = M.label(num(it.x, 0), num(it.y, 0), str(it.text, 'Label'));
@@ -381,7 +492,7 @@
         l.size = Math.max(0.2, num(it.size, 0.8));
         l.color = str(it.color, l.color);
         l.rot = num(it.rot, 0);
-        return l;
+        return flags(l, it);
       }
       case 'route': {
         const end = (e) => {
@@ -400,11 +511,145 @@
         r.dashed = !!it.dashed;
         r.arrows = ['end', 'both', 'none'].includes(it.arrows) ? it.arrows : 'end';
         r.label = str(it.label, '');
-        return r;
+        return flags(r, it);
       }
       default:
         return null;
     }
+  };
+
+  /* Files written before machine types existed only carry a `kind` string per
+     machine. Rebuild a palette from what those machines actually look like so
+     nothing is lost on load. */
+  function deriveTypes(doc) {
+    const groups = new Map();
+    for (const it of doc.items) {
+      if (it.type !== 'machine' || !it.kind) continue;
+      if (!groups.has(it.kind)) groups.set(it.kind, []);
+      groups.get(it.kind).push(it);
+    }
+    for (const [kind, machines] of groups) {
+      const first = machines[0];
+      /* Prefer a label shared by the group, minus any trailing number. */
+      const bases = machines.map((m) => (m.label || '').replace(/\s+\d+$/, '').trim()).filter(Boolean);
+      const tally = {};
+      let name = '', best = 0;
+      for (const b of bases) {
+        tally[b] = (tally[b] || 0) + 1;
+        if (tally[b] > best) { best = tally[b]; name = b; }
+      }
+      const type = M.type(name || kind, first.w, first.h, first.color);
+      type.id = kind;
+      doc.types.push(type);
+    }
+  }
+
+  /* ---------- animated run ---------- */
+
+  /* The full journey as a list of legs. Each leg is the polyline from one stop
+     to the next: the route between them when there is one, else a straight
+     line, so an unrouted pair still animates. */
+  M.animPath = (doc) => {
+    const anim = M.anim(doc);
+    const legs = [];
+    const stops = anim.stops.map((st) => ({ st, item: M.byId(doc, st.item) })).filter((s) => s.item);
+
+    for (let i = 0; i < stops.length - 1; i++) {
+      const a = stops[i].item, b = stops[i + 1].item;
+      const route = doc.items.find((it) => it.type === 'route' && !it.hidden &&
+        ((it.from.item === a.id && it.to.item === b.id) || (it.from.item === b.id && it.to.item === a.id)));
+
+      let pts;
+      if (route) {
+        pts = M.routePath(doc, route);
+        /* Walk the route the way this leg travels. */
+        if (route.from.item === b.id) pts = pts.slice().reverse();
+      } else {
+        const ca = G.rectCenter(M.isRect(a) ? a : { x: a.x, y: a.y, w: 0, h: 0 });
+        const cb = G.rectCenter(M.isRect(b) ? b : { x: b.x, y: b.y, w: 0, h: 0 });
+        pts = [ca, cb];
+      }
+      if (pts.length > 1) legs.push({ pts, length: G.polylineLength(pts), viaRoute: !!route });
+    }
+    return { stops, legs };
+  };
+
+  /* Total run time in seconds: dwell at each stop plus travel between them. */
+  M.animDuration = (doc, path) => {
+    const anim = M.anim(doc);
+    const speed = Math.max(0.5, anim.speed);
+    let total = 0;
+    for (const s of path.stops) total += s.st.dwell;
+    for (const leg of path.legs) total += leg.length / speed;
+    return total;
+  };
+
+  /* Where the token is at time t, and what it is doing. */
+  M.animAt = (doc, path, t) => {
+    const anim = M.anim(doc);
+    const speed = Math.max(0.5, anim.speed);
+    if (!path.stops.length) return null;
+
+    let cursor = 0;
+    for (let i = 0; i < path.stops.length; i++) {
+      const stop = path.stops[i];
+      const dwell = stop.st.dwell;
+
+      if (t <= cursor + dwell) {
+        const at = M.isRect(stop.item) ? G.rectCenter(stop.item) : { x: stop.item.x, y: stop.item.y };
+        return {
+          x: at.x, y: at.y, angle: 0,
+          stop: stop.item, index: i, working: dwell > 0,
+          progress: dwell > 0 ? (t - cursor) / dwell : 1,
+        };
+      }
+      cursor += dwell;
+
+      const leg = path.legs[i];
+      if (!leg) break;
+      const travel = leg.length / speed;
+      if (t <= cursor + travel) {
+        const frac = travel > 0 ? (t - cursor) / travel : 1;
+        const p = G.pointAlong(leg.pts, G.clamp(frac, 0, 1));
+        return { x: p.x, y: p.y, angle: p.angle, stop: null, from: stop.item, to: path.stops[i + 1].item, index: i, working: false, progress: frac };
+      }
+      cursor += travel;
+    }
+
+    const last = path.stops[path.stops.length - 1];
+    const at = M.isRect(last.item) ? G.rectCenter(last.item) : { x: last.item.x, y: last.item.y };
+    return { x: at.x, y: at.y, angle: 0, stop: last.item, index: path.stops.length - 1, working: false, progress: 1 };
+  };
+
+  /* Follow the routes out of a machine to propose a run order. */
+  M.buildRunFromRoutes = (doc) => {
+    const machines = doc.items.filter((it) => it.type === 'machine' && !it.hidden);
+    if (!machines.length) return [];
+    const routes = doc.items.filter((it) => it.type === 'route' && !it.hidden && it.from.item && it.to.item);
+
+    const outgoing = new Map();
+    const incoming = new Set();
+    for (const r of routes) {
+      if (!outgoing.has(r.from.item)) outgoing.set(r.from.item, []);
+      outgoing.get(r.from.item).push(r.to.item);
+      incoming.add(r.to.item);
+    }
+
+    /* Start where material enters: something with routes out and none in. */
+    let startId = machines.find((m) => outgoing.has(m.id) && !incoming.has(m.id));
+    if (!startId) startId = machines.find((m) => outgoing.has(m.id));
+    if (!startId) return [];
+
+    const order = [];
+    const seenIds = new Set();
+    let current = startId.id;
+    while (current && !seenIds.has(current)) {
+      seenIds.add(current);
+      order.push(current);
+      const next = (outgoing.get(current) || []).find((id) => !seenIds.has(id));
+      current = next;
+    }
+    return order;
   };
 
   /* ---------- stats ---------- */
@@ -417,11 +662,13 @@
     };
     for (const it of doc.items) {
       switch (it.type) {
-        case 'machine':
+        case 'machine': {
           s.machines++;
           s.machineArea += it.w * it.h;
-          s.byKind[it.kind] = (s.byKind[it.kind] || 0) + 1;
+          const key = it.kind || '';
+          s.byKind[key] = (s.byKind[key] || 0) + 1;
           break;
+        }
         case 'zone':
           s.zones++;
           s.zoneArea += it.w * it.h;

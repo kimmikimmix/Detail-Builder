@@ -37,6 +37,8 @@
     <label class="toggle"><input type="checkbox" id="chkGrid" checked><span>Grid</span></label>
     <label class="toggle"><input type="checkbox" id="chkSnap" checked><span>Snap</span></label>
     <label class="toggle"><input type="checkbox" id="chkLabels" checked><span>Labels</span></label>
+    <label class="toggle" title="Show each machine's details on the layout"><input type="checkbox" id="chkSpecs"><span>Specs</span></label>
+    <label class="toggle" title="Show each zone's process and cycle time"><input type="checkbox" id="chkTimes"><span>Times</span></label>
   </div>
 
   <div class="topbar-group zoomgroup">
@@ -47,6 +49,12 @@
   </div>
 
   <div class="topbar-group right">
+    <button class="btn icon" id="btnFocus" title="Focus mode — hide both side panels (\)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6"/></svg>
+    </button>
+    <button class="btn icon" id="btnFullscreen" title="Full screen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6"/></svg>
+    </button>
     <button class="btn" id="btnSample" title="Load an example layout">Example</button>
     <button class="btn" id="btnHelp" title="Keyboard shortcuts (?)">?</button>
   </div>
@@ -93,8 +101,8 @@
 
     <div class="panel grow">
       <div class="panel-title">
-        Machine palette
-        <span class="hint">click, then drag on canvas</span>
+        Machine types
+        <button class="title-btn" id="btnNewType" title="Define a new machine type">+ New</button>
       </div>
       <div class="palette" id="palette"></div>
     </div>
@@ -116,6 +124,15 @@
   </main>
 
   <aside class="sidebar right">
+    <div class="tabs" id="sideTabs">
+      <button class="tab active" data-pane="design">Design</button>
+      <button class="tab" data-pane="process">Process<span class="badge hidden"></span></button>
+      <button class="tab" data-pane="layers">Layers</button>
+      <button class="tab" data-pane="play">Run</button>
+      <button class="tab-wide" id="btnWide" title="Widen this panel">&#8596;</button>
+    </div>
+
+    <div class="pane" id="paneDesign">
     <div class="panel">
       <div class="panel-title">Properties</div>
       <div id="props" class="props"><div class="empty">Select something to edit it.</div></div>
@@ -156,7 +173,131 @@
       <div class="panel-title">Layout stats</div>
       <div id="stats" class="stats"></div>
     </div>
+    </div><!-- /paneDesign -->
+
+    <div class="pane hidden" id="paneProcess">
+      <section class="fold open" data-fold="steps">
+        <button class="fold-head">
+          <span class="chev"></span>Written steps
+          <span class="hint" id="stepCount">no steps yet</span>
+        </button>
+        <div class="fold-body">
+          <div class="btnrow">
+            <button class="btn primary" id="btnAddStep" title="Add an empty step at the end">+ Step</button>
+            <button class="btn" id="btnStepFromSel" title="Add a step already linked to the selected item">From selection</button>
+            <button class="btn" id="btnStepsMd" title="Download the written process as a Markdown file">Export</button>
+          </div>
+          <p class="note">The process in order, in your words. Link a step to a machine
+            and its number shows up on that machine.</p>
+          <div class="steps" id="stepList"></div>
+        </div>
+      </section>
+
+      <section class="fold" data-fold="specs">
+        <button class="fold-head">
+          <span class="chev"></span>Machine details
+          <span class="hint" id="specCount"></span>
+        </button>
+        <div class="fold-body">
+          <p class="note">Per-machine settings — wash pressure, temperature, cycle time,
+            tooling. Turn on <b>Specs</b> in the toolbar to show them on the layout.</p>
+          <div class="spec-list" id="specList"></div>
+        </div>
+      </section>
+
+      <section class="fold" data-fold="zones">
+        <button class="fold-head">
+          <span class="chev"></span>Zone process
+          <span class="hint" id="zoneTotal"></span>
+        </button>
+        <div class="fold-body">
+          <p class="note">What each zone does and how long it takes. Turn on <b>Times</b>
+            in the toolbar to show the cycle times on the layout.</p>
+          <div class="zone-list" id="zoneList"></div>
+        </div>
+      </section>
+    </div><!-- /paneProcess -->
+
+    <div class="pane hidden" id="paneLayers">
+      <div class="panel">
+        <div class="panel-title">
+          Layers
+          <span class="hint" id="layerCount"></span>
+        </div>
+        <div class="btnrow">
+          <button class="btn" id="btnLockAll" title="Lock everything">Lock all</button>
+          <button class="btn" id="btnUnlockAll" title="Unlock everything">Unlock</button>
+          <button class="btn" id="btnShowAll" title="Make every hidden item visible">Show all</button>
+        </div>
+        <p class="note">Top of the list draws on top. Lock an item to stop it being
+          selected or dragged; hide it to take it off the canvas entirely.</p>
+      </div>
+      <div class="panel grow layer-list" id="layerList"></div>
+    </div>
+
+    <div class="pane hidden" id="panePlay">
+      <div class="panel">
+        <div class="panel-title">
+          Animated run
+          <span class="hint" id="runTime"></span>
+        </div>
+        <div class="btnrow">
+          <button class="btn primary" id="btnPlay" title="Play / pause (Space bar is pan, use this button)">▶ Play</button>
+          <button class="btn" id="btnRestart" title="Back to the start">Restart</button>
+        </div>
+        <input type="range" class="scrub" id="runScrub" min="0" max="1000" value="0" title="Scrub through the run">
+        <div class="row three">
+          <label>Speed</label>
+          <input type="range" id="runSpeed" min="1" max="30" step="0.5" value="6">
+          <span class="rangeval" id="runSpeedVal">6 m/s</span>
+        </div>
+        <label class="check"><input type="checkbox" id="runLoop" checked> Loop the run</label>
+        <div class="btnrow">
+          <button class="btn" id="btnBuildRun" title="Follow the routes to work out the order">Build from routes</button>
+          <button class="btn" id="btnAddStop" title="Append the selected machine">Add selected</button>
+        </div>
+        <p class="note">The run visits each stop in order, pausing for its work time and
+          travelling along the route between stops when there is one.</p>
+      </div>
+      <div class="panel grow stop-list" id="stopList"></div>
+    </div>
   </aside>
+</div>
+
+<div class="modal hidden" id="typeModal">
+  <div class="modal-card narrow">
+    <div class="modal-head">
+      <h2 id="typeModalTitle">New machine type</h2>
+      <button class="btn icon" id="btnTypeClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="props">
+        <div class="row">
+          <label>Name</label>
+          <input type="text" id="typeName" placeholder="e.g. Haas VF-2, Weld bench, Pallet rack" spellcheck="false">
+        </div>
+        <div class="row two">
+          <label>Size (m)</label>
+          <input type="number" id="typeW" step="0.5" min="0.2" title="Width in metres">
+          <input type="number" id="typeH" step="0.5" min="0.2" title="Depth in metres">
+        </div>
+        <div class="row">
+          <label>Colour</label>
+          <input type="color" id="typeColor">
+        </div>
+        <label class="check hidden" id="typeApplyRow">
+          <input type="checkbox" id="typeApply"> Apply the colour and size to the
+          <span id="typeUseCount">0</span> machines already using this type
+        </label>
+        <div class="btnrow">
+          <button class="btn primary" id="btnTypeSave">Save type</button>
+          <button class="btn danger hidden" id="btnTypeDelete">Delete type</button>
+        </div>
+        <p class="note" id="typeNote">Types are saved inside the layout, so a file always
+          carries the machines it was drawn with.</p>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="modal hidden" id="helpModal">
@@ -175,10 +316,62 @@
       <section>
         <h3>Drawing</h3>
         <ul>
-          <li><b>Machine</b> — pick a type in the palette, then drag a box. A plain click drops the default size.</li>
+          <li><b>Machine</b> — pick one of your types, then drag a box. A plain click drops that type's default size. With no type selected you get a plain box you can name yourself.</li>
+          <li><b>Machine types</b> — the palette starts empty; <b>+ New</b> defines a type (name, default size, colour), and clicking the pencil edits or deletes one. Machines keep their own size and colour, so editing a type only changes what you place next unless you tick <i>apply to existing</i>.</li>
           <li><b>Wall</b> — click for each corner, <kbd>Enter</kbd> or double-click to finish, <kbd>Esc</kbd> to cancel. Hold <kbd>Shift</kbd> to lock to 45&deg;.</li>
-          <li><b>Route</b> — click the source machine, click waypoints if you want them, click the target machine. Routes stay attached when machines move.</li>
+          <li><b>Route</b> — drag from one machine to another for a one-way arrow, or click the source then the target. Click empty space to add a bend; <b>double-click</b>, <kbd>Enter</kbd> or right-click ends a route anywhere, machine or not. Routes stay attached when machines move.</li>
           <li><b>Cascade</b> — select machines and use the cascade panel to repeat them into a line, optionally wired up with routes.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Naming machines</h3>
+        <ul>
+          <li>Double-click a machine on the canvas — or select it and press <kbd>Enter</kbd> or <kbd>F2</kbd> — and type the name in place.</li>
+          <li>Or select it and edit <b>Name</b> at the top of the Properties panel.</li>
+          <li>Select several machines and use <b>Name all</b> to number a whole run at once: typing <code>Press</code> gives Press 1, Press 2, Press 3… ordered left to right.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Writing the process</h3>
+        <ul>
+          <li>Switch the right-hand panel to <b>Process</b> and press <b>+ Step</b> for each step, in order. Every step has a title and a details box for as much as you want to write.</li>
+          <li><b>From selection</b> adds a step already linked to whatever machine is selected.</li>
+          <li>A linked step's number appears on that machine in the layout; click the number in the step to jump to it, and the ✕ on the chip unlinks it.</li>
+          <li>Reorder with ↑ ↓, copy a step with ⧉, remove it with ✕. Use ↔ in the panel header to widen the panel for writing.</li>
+          <li>Steps are saved inside the layout file. <b>Export</b> writes them out as a Markdown document.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Machine details &amp; zone process</h3>
+        <ul>
+          <li><b>Process → Machine details</b> holds per-machine settings — wash pressure, temperature, cycle time, tooling. Add as many rows as you like per machine.</li>
+          <li><b>Process → Zone process</b> is what each zone does and when, plus the minutes it takes. The panel totals the time across every zone.</li>
+          <li>The three Process sections fold open and shut independently, so you can keep just the one you are working in.</li>
+          <li><b>Specs</b> and <b>Times</b> in the toolbar show those on the layout itself — details under each machine, cycle times on each zone.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Layers</h3>
+        <ul>
+          <li>The <b>Layers</b> tab lists everything, top of the stack first. Click a row to select it, or use ↑ ↓ to change what draws over what.</li>
+          <li>The <b>padlock</b> stops an item being selected or dragged on the canvas — handy once the walls and zones are where you want them.</li>
+          <li>The <b>eye</b> takes an item off the canvas entirely. <b>Show all</b> brings the hidden ones back.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Animated run</h3>
+        <ul>
+          <li>The <b>Run</b> tab animates a part through the plant. <b>Build from routes</b> follows your arrows to work out the order, or select a machine and <b>Add selected</b>.</li>
+          <li>Reorder stops with ↑ ↓, drop one with ✕, and set the seconds of work at each stop. Between stops the token travels the route you drew, or a straight line where there isn't one.</li>
+          <li><kbd>P</kbd> plays and pauses; drag the scrubber to move through the run; <b>Speed</b> is the travel speed in metres per second.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Room to work</h3>
+        <ul>
+          <li><kbd>\</kbd> or the ⛶ button is <b>focus mode</b> — both side panels get out of the way and the canvas fills the window.</li>
+          <li>The second button asks the browser for real full screen.</li>
+          <li><b>↔</b> beside the tabs widens the right-hand panel when you are writing.</li>
         </ul>
       </section>
       <section>
@@ -189,8 +382,7 @@
           <li><kbd>Ctrl</kbd>+<kbd>A</kbd> Select all &middot; <kbd>Delete</kbd> Remove &middot; <kbd>Esc</kbd> Deselect</li>
           <li>Arrow keys nudge (hold <kbd>Shift</kbd> for 1 m steps)</li>
           <li><kbd>Shift</kbd>+click to add to the selection &middot; drag on empty space to marquee-select</li>
-          <li>Double-click a machine, zone or label to rename it</li>
-          <li><kbd>[</kbd> / <kbd>]</kbd> send backward / bring forward</li>
+                    <li><kbd>[</kbd> / <kbd>]</kbd> send backward / bring forward</li>
         </ul>
       </section>
       <section>
