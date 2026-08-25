@@ -902,6 +902,163 @@
     });
   };
 
+  /* ---------- printing ---------- */
+
+  function printOpts() {
+    const on = (id) => document.getElementById(id).checked;
+    return {
+      showSpecs: on('printDetails'),
+      showTimes: on('printTimes'),
+      showLabels: on('printLabels'),
+      showGrid: on('printGrid'),
+      tables: on('printSummary'),
+      header: on('printHeader'),
+      orientation: document.getElementById('printOrient').value,
+    };
+  }
+
+  /* A4 less 10mm margins, in CSS pixels at 96dpi. The drawing is composed at
+     the size it will physically occupy, so labels, badges and detail cards come
+     out the same readable size whatever the plant measures. */
+  const MM = 96 / 25.4;
+
+  function printGeometry(o) {
+    const landscape = o.orientation === 'landscape';
+    const availW = (landscape ? 277 : 190) * MM;
+    const availH = ((landscape ? 165 : 235) - (o.header ? 12 : 0)) * MM;
+    const b = M.docBounds(state.doc);
+    if (!b) return null;
+    const pad = 1;
+    const zoom = Math.min(availW / (b.w + pad * 2), availH / (b.h + pad * 2));
+    return { zoom: Math.max(4, zoom), pad: pad };
+  }
+
+  function printRender(o, dpr) {
+    const geo = printGeometry(o);
+    if (!geo) return null;
+    return R.exportPNG(state, {
+      scale: geo.zoom,
+      padding: geo.pad,
+      dpr: dpr,
+      background: '#ffffff',   /* paper, not the app's canvas tint */
+      showGrid: o.showGrid,
+      showLabels: o.showLabels,
+      showSpecs: o.showSpecs,
+      showTimes: o.showTimes,
+    });
+  }
+
+  app.openPrintDialog = () => {
+    if (!M.docBounds(state.doc)) { app.toast('Nothing to print yet'); return; }
+    /* Start from what is already on screen, so the print matches the view. */
+    document.getElementById('printDetails').checked = state.showSpecs;
+    document.getElementById('printTimes').checked = state.showTimes;
+    document.getElementById('printLabels').checked = state.showLabels;
+    document.getElementById('printGrid').checked = false;
+    document.getElementById('printModal').classList.remove('hidden');
+    app.updatePrintPreview();
+  };
+
+  app.closePrintDialog = () => {
+    document.getElementById('printModal').classList.add('hidden');
+    const img = document.getElementById('printPreview');
+    img.removeAttribute('src');
+  };
+
+  /* The preview is the same composition at 1:1, shown small — so it shows
+     honestly how much of the detail will be readable. */
+  app.updatePrintPreview = () => {
+    const o = printOpts();
+    const off = printRender(o, 1);
+    const img = document.getElementById('printPreview');
+    const note = document.getElementById('printPreviewNote');
+    if (!off) { img.removeAttribute('src'); note.textContent = ''; return; }
+    img.src = off.toDataURL('image/png');
+    const b = M.docBounds(state.doc);
+    const geo = printGeometry(o);
+    note.textContent = R.fmt(b.w) + ' × ' + R.fmt(b.h) + ' m · A4 ' + o.orientation +
+      ' · 1:' + Math.round(1000 / (geo.zoom / MM)) +
+      (o.tables ? ' · plus summary tables' : '');
+  };
+
+  function printTablesHTML(o) {
+    if (!o.tables) return '';
+    const doc = state.doc;
+    const esc = (t) => String(t == null ? '' : t)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const swatch = (c) => '<span class="swatch" style="background:' + esc(c) + '"></span>';
+    let html = '';
+
+    if (o.showTimes) {
+      const zones = doc.items.filter((it) => it.type === 'zone' && !it.hidden);
+      if (zones.length) {
+        const total = zones.reduce((sum, z) => sum + (z.duration || 0), 0);
+        html += '<h2>Zone process</h2><table><thead><tr><th>Zone</th><th>Process</th>' +
+          '<th class="num">Time</th></tr></thead><tbody>';
+        for (const z of zones) {
+          html += '<tr><td>' + swatch(z.color) + esc(z.label) + '</td><td>' + esc(z.process) +
+            '</td><td class="num">' + (z.duration ? esc(R.fmtTime(z.duration)) : '—') + '</td></tr>';
+        }
+        if (total > 0) {
+          html += '<tr class="total"><td>Total</td><td></td><td class="num">' +
+            esc(R.fmtTime(total)) + '</td></tr>';
+        }
+        html += '</tbody></table>';
+      }
+    }
+
+    if (o.showSpecs) {
+      const machines = doc.items.filter((it) => it.type === 'machine' && !it.hidden &&
+        (it.params || []).some((p) => p.k || p.v));
+      if (machines.length) {
+        html += '<h2>Machine details</h2><table><thead><tr><th>Machine</th><th>Setting</th>' +
+          '<th>Value</th></tr></thead><tbody>';
+        for (const m of machines) {
+          const rows = m.params.filter((p) => p.k || p.v);
+          rows.forEach((p, i) => {
+            html += '<tr><td>' + (i === 0 ? swatch(m.color) + esc(m.label) : '') + '</td><td>' +
+              esc(p.k) + '</td><td>' + esc(p.v) + '</td></tr>';
+          });
+        }
+        html += '</tbody></table>';
+      }
+    }
+
+    return html ? '<div class="print-break">' + html + '</div>' : '';
+  }
+
+  app.doPrint = () => {
+    const o = printOpts();
+    /* 3× supersampling puts the bitmap near 290dpi on the page. */
+    const off = printRender(o, 3);
+    if (!off) { app.toast('Nothing to print yet'); return; }
+
+    document.getElementById('printPageStyle').textContent =
+      '@page { size: A4 ' + o.orientation + '; margin: 10mm; }';
+    document.body.classList.toggle('print-portrait', o.orientation === 'portrait');
+
+    const s = M.stats(state.doc);
+    const zoneTime = state.doc.items
+      .filter((it) => it.type === 'zone' && !it.hidden)
+      .reduce((sum, z) => sum + (z.duration || 0), 0);
+
+    document.getElementById('printHead').style.display = o.header ? '' : 'none';
+    document.getElementById('printTitle').textContent = state.doc.name || 'Factory layout';
+    const meta = [];
+    if (s.extent) meta.push(R.fmt(s.extent.w) + ' × ' + R.fmt(s.extent.h) + ' m');
+    meta.push(s.machines + ' machine' + (s.machines === 1 ? '' : 's'));
+    if (o.showTimes && zoneTime > 0) meta.push(R.fmtTime(zoneTime) + ' total process time');
+    meta.push(new Date().toLocaleDateString());
+    document.getElementById('printMeta').textContent = meta.join('  ·  ');
+
+    document.getElementById('printImage').src = off.toDataURL('image/png');
+    document.getElementById('printTables').innerHTML = printTablesHTML(o);
+
+    app.closePrintDialog();
+    /* Give the browser a frame to lay the image out before the dialog opens. */
+    setTimeout(() => window.print(), 120);
+  };
+
   app.openFile = (file) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -946,6 +1103,7 @@
         case 'v': e.preventDefault(); app.paste(); return;
         case 'd': e.preventDefault(); app.duplicate(); return;
         case 's': e.preventDefault(); app.saveFile(); return;
+        case 'p': e.preventDefault(); app.openPrintDialog(); return;
         default: return;
       }
     }
@@ -1103,6 +1261,15 @@
     });
     document.getElementById('btnSave').addEventListener('click', app.saveFile);
     document.getElementById('btnPng').addEventListener('click', app.exportPNG);
+    document.getElementById('btnPrint').addEventListener('click', app.openPrintDialog);
+    document.getElementById('btnPrintGo').addEventListener('click', app.doPrint);
+    document.getElementById('btnPrintClose').addEventListener('click', app.closePrintDialog);
+    document.getElementById('btnPrintCancel').addEventListener('click', app.closePrintDialog);
+    document.getElementById('printModal').addEventListener('click', (e) => {
+      if (e.target.id === 'printModal') app.closePrintDialog();
+    });
+    ['printDetails', 'printTimes', 'printLabels', 'printGrid', 'printSummary', 'printOrient']
+      .forEach((id) => document.getElementById(id).addEventListener('change', app.updatePrintPreview));
     document.getElementById('btnUndo').addEventListener('click', app.undo);
     document.getElementById('btnRedo').addEventListener('click', app.redo);
 

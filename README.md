@@ -144,6 +144,26 @@ The **Layers** tab lists everything top-of-stack first.
 - The **eye** takes an item off the canvas entirely; **Show all** brings the
   hidden ones back.
 
+### Printing
+
+![The printed sheet: drawing, then zone times and machine details](docs/print-sheet.png)
+
+**Print** (or <kbd>Ctrl</kbd>+<kbd>P</kbd>) puts the drawing on paper on its own —
+none of the toolbars or side panels come with it.
+
+The dialog has its own switches, independent of what happens to be showing on
+screen: **Machine details**, **Zone process & times**, **Names**, **Grid**, and
+**Summary tables** — a second page listing every zone with its process and time
+(with a total) and every machine's settings.
+
+The drawing is composed at the size it will physically occupy on the page, so
+labels, time badges and detail cards print at the same readable size whatever
+the plant measures, and the bitmap is supersampled to roughly 290 dpi. The
+preview in the dialog is the same composition shown small, so what you see is
+what prints; the note under it gives the drawing scale (e.g. `1:265`). Pick
+landscape or portrait, and choose "Save as PDF" in the browser's print dialog
+for a file.
+
 ### Room to work
 
 <kbd>\\</kbd> or the ⛶ button is **focus mode**: both side panels get out of
@@ -182,6 +202,7 @@ reported in the Layout stats panel as you build.
 | <kbd>[</kbd> / <kbd>]</kbd> | Send backward / bring forward |
 | <kbd>F</kbd> | Zoom to fit |
 | <kbd>P</kbd> | Play / pause the animated run |
+| <kbd>Ctrl</kbd>+<kbd>P</kbd> | Print the drawing |
 | <kbd>\\</kbd> | Focus mode — hide both side panels |
 | <kbd>Shift</kbd>+click | Add to / remove from the selection |
 | <kbd>Alt</kbd>+drag | Ignore grid snapping for this drag |

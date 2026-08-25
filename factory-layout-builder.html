@@ -736,6 +736,89 @@ body.focus .canvas-wrap { border-left: none; }
 }
 .stop-dwell:focus { outline: none; border-color: var(--accent); }
 .stop-unit { font-size: 10px; color: var(--text-dim2); flex: none; }
+
+/* ---------- print ---------- */
+.print-opts { display: grid; grid-template-columns: 1fr 240px; gap: 16px; align-items: start; }
+.print-preview {
+  background: #eef1f5;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  min-height: 140px;
+}
+.print-preview img { max-width: 100%; max-height: 320px; display: block; }
+.print-preview-note { font-size: 10.5px; color: #64748b; font-variant-numeric: tabular-nums; }
+
+/* The sheet only exists on paper. */
+.print-sheet { display: none; }
+
+@media print {
+  html, body { height: auto; overflow: visible; background: #fff; }
+  body > *:not(.print-sheet) { display: none !important; }
+
+  .print-sheet {
+    display: block;
+    color: #111;
+    font: 11px/1.45 "Inter", "Segoe UI", system-ui, sans-serif;
+  }
+  .print-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid #d3d9e2;
+    padding-bottom: 5px;
+    margin-bottom: 8px;
+  }
+  .print-head h1 { font-size: 15px; margin: 0; font-weight: 700; }
+  .print-meta { font-size: 10px; color: #566072; }
+
+  .print-figure { text-align: center; }
+  .print-figure img { max-width: 100%; max-height: 165mm; object-fit: contain; }
+  body.print-portrait .print-figure img { max-height: 235mm; }
+
+  .print-tables { margin-top: 10px; }
+  .print-tables:empty { display: none; }
+  .print-tables h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: #566072;
+    margin: 0 0 5px;
+    page-break-after: avoid;
+  }
+  .print-tables table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 12px;
+    font-size: 10px;
+  }
+  .print-tables th, .print-tables td {
+    text-align: left;
+    padding: 3px 6px;
+    border-bottom: 1px solid #e2e7ef;
+    vertical-align: top;
+  }
+  .print-tables th { color: #566072; font-weight: 600; border-bottom-color: #c3ccda; }
+  .print-tables td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .print-tables tr.total td { font-weight: 700; border-top: 1px solid #c3ccda; }
+  .print-tables .swatch {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    margin-right: 5px;
+    vertical-align: baseline;
+  }
+  .print-break { page-break-before: always; }
+}
+
+@media (max-width: 720px) {
+  .print-opts { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
@@ -753,6 +836,7 @@ body.focus .canvas-wrap { border-left: none; }
     <button class="btn" id="btnOpen" title="Open a .factory.json file">Open</button>
     <button class="btn" id="btnSave" title="Download layout as JSON">Save</button>
     <button class="btn" id="btnPng" title="Export a PNG image">PNG</button>
+    <button class="btn" id="btnPrint" title="Print the layout (Ctrl+P)">Print</button>
     <input type="file" id="fileInput" accept=".json,application/json" hidden>
   </div>
 
@@ -996,6 +1080,59 @@ body.focus .canvas-wrap { border-left: none; }
   </aside>
 </div>
 
+<div class="modal hidden" id="printModal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2>Print layout</h2>
+      <button class="btn icon" id="btnPrintClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="print-opts">
+        <div class="print-preview">
+          <img id="printPreview" alt="Print preview">
+          <span class="print-preview-note" id="printPreviewNote"></span>
+        </div>
+        <div class="props">
+          <div class="subhead">Include</div>
+          <label class="check"><input type="checkbox" id="printDetails"> Machine details</label>
+          <label class="check"><input type="checkbox" id="printTimes"> Zone process &amp; times</label>
+          <label class="check"><input type="checkbox" id="printLabels" checked> Names on machines</label>
+          <label class="check"><input type="checkbox" id="printGrid"> Grid</label>
+          <label class="check"><input type="checkbox" id="printSummary"> Summary tables on a second page</label>
+
+          <div class="subhead">Paper</div>
+          <div class="row">
+            <label>Orientation</label>
+            <select id="printOrient">
+              <option value="landscape">Landscape</option>
+              <option value="portrait">Portrait</option>
+            </select>
+          </div>
+          <label class="check"><input type="checkbox" id="printHeader" checked> Title and date across the top</label>
+
+          <div class="btnrow">
+            <button class="btn primary" id="btnPrintGo">Print</button>
+            <button class="btn" id="btnPrintCancel">Cancel</button>
+          </div>
+          <p class="note">Only the drawing is printed — none of the toolbars or side
+            panels. Choose “Save as PDF” in the print dialog for a file.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="print-sheet" id="printSheet" aria-hidden="true">
+  <header class="print-head" id="printHead">
+    <h1 id="printTitle"></h1>
+    <div class="print-meta" id="printMeta"></div>
+  </header>
+  <div class="print-figure"><img id="printImage" alt=""></div>
+  <section class="print-tables" id="printTables"></section>
+</div>
+
+<style id="printPageStyle">@page { size: A4 landscape; margin: 10mm; }</style>
+
 <div class="modal hidden" id="typeModal">
   <div class="modal-card narrow">
     <div class="modal-head">
@@ -1096,6 +1233,16 @@ body.focus .canvas-wrap { border-left: none; }
           <li>The <b>Run</b> tab animates a part through the plant. <b>Build from routes</b> follows your arrows to work out the order, or select a machine and <b>Add selected</b>.</li>
           <li>Reorder stops with ↑ ↓, drop one with ✕, and set the seconds of work at each stop. Between stops the token travels the route you drew, or a straight line where there isn't one.</li>
           <li><kbd>P</kbd> plays and pauses; drag the scrubber to move through the run; <b>Speed</b> is the travel speed in metres per second.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Printing</h3>
+        <ul>
+          <li><b>Print</b> (or <kbd>Ctrl</kbd>+<kbd>P</kbd>) prints the drawing on its own — no toolbars, no side panels.</li>
+          <li>Tick <b>Machine details</b> and <b>Zone process &amp; times</b> to include them, independently of what is showing on screen. <b>Names</b> and <b>Grid</b> are separate switches.</li>
+          <li><b>Summary tables</b> adds a second page listing every zone with its process and time (and a total), plus every machine's settings.</li>
+          <li>The drawing is scaled to the paper, so labels and detail cards come out the same readable size whatever the plant measures — the preview shows exactly what you will get, and the note gives the scale.</li>
+          <li>Choose “Save as PDF” in your browser's print dialog to get a file instead.</li>
         </ul>
       </section>
       <section>
@@ -2136,7 +2283,7 @@ window.FB = window.FB || {};
     ctx.save();
     ctx.scale(R.dpr, R.dpr);
     ctx.clearRect(0, 0, R.width, R.height);
-    ctx.fillStyle = C.paper;
+    ctx.fillStyle = state.background || C.paper;
     ctx.fillRect(0, 0, R.width, R.height);
 
     if (state.showGrid) drawGrid(ctx, cam, doc.grid);
@@ -3081,22 +3228,35 @@ window.FB = window.FB || {};
   R.hexA = hexA;
 
   /* Render the document to an offscreen canvas for PNG export. */
-  R.exportPNG = (state, scale, padding) => {
+  /* opts: { scale, padding, dpr, showGrid, showLabels, showSpecs, showTimes }.
+     `dpr` supersamples: the drawing is composed at `scale` px per metre and the
+     bitmap comes out that many times larger, so text keeps its size relative to
+     the layout while the image stays sharp enough to print.
+     Anything omitted falls back to what is on screen. A number in place of
+     opts is read as the scale, keeping the older two-argument form working. */
+  R.exportPNG = (state, opts, padding) => {
+    const o = typeof opts === 'number' || opts === undefined
+      ? { scale: opts, padding: padding }
+      : opts;
+    const pick = (key) => (o[key] === undefined ? state[key] : o[key]);
+
     const doc = state.doc;
     const b = M.docBounds(doc);
     if (!b) return null;
-    const pad = padding === undefined ? 2 : padding;
-    const zoom = (scale || 40);
+    const pad = o.padding === undefined ? 2 : o.padding;
+    const zoom = (o.scale || 40);
+    const dpr = Math.max(1, o.dpr || 1);
     const w = Math.min(8000, Math.max(64, Math.round((b.w + pad * 2) * zoom)));
     const h = Math.min(8000, Math.max(64, Math.round((b.h + pad * 2) * zoom)));
 
     const off = document.createElement('canvas');
-    off.width = w; off.height = h;
+    off.width = Math.min(16000, Math.round(w * dpr));
+    off.height = Math.min(16000, Math.round(h * dpr));
 
     const prev = { canvas: R.canvas, ctx: R.ctx, dpr: R.dpr, width: R.width, height: R.height };
     R.canvas = off;
     R.ctx = off.getContext('2d');
-    R.dpr = 1;
+    R.dpr = dpr;
     R.width = w;
     R.height = h;
 
@@ -3105,8 +3265,11 @@ window.FB = window.FB || {};
       cam: { x: b.x - pad, y: b.y - pad, zoom },
       selection: new Set(),
       hover: null,
-      showGrid: state.showGrid,
-      showLabels: state.showLabels,
+      background: o.background,
+      showGrid: pick('showGrid'),
+      showLabels: pick('showLabels'),
+      showSpecs: pick('showSpecs'),
+      showTimes: pick('showTimes'),
       draft: null,
       guides: [],
       marquee: null,
@@ -5716,6 +5879,163 @@ window.FB = window.FB || {};
     });
   };
 
+  /* ---------- printing ---------- */
+
+  function printOpts() {
+    const on = (id) => document.getElementById(id).checked;
+    return {
+      showSpecs: on('printDetails'),
+      showTimes: on('printTimes'),
+      showLabels: on('printLabels'),
+      showGrid: on('printGrid'),
+      tables: on('printSummary'),
+      header: on('printHeader'),
+      orientation: document.getElementById('printOrient').value,
+    };
+  }
+
+  /* A4 less 10mm margins, in CSS pixels at 96dpi. The drawing is composed at
+     the size it will physically occupy, so labels, badges and detail cards come
+     out the same readable size whatever the plant measures. */
+  const MM = 96 / 25.4;
+
+  function printGeometry(o) {
+    const landscape = o.orientation === 'landscape';
+    const availW = (landscape ? 277 : 190) * MM;
+    const availH = ((landscape ? 165 : 235) - (o.header ? 12 : 0)) * MM;
+    const b = M.docBounds(state.doc);
+    if (!b) return null;
+    const pad = 1;
+    const zoom = Math.min(availW / (b.w + pad * 2), availH / (b.h + pad * 2));
+    return { zoom: Math.max(4, zoom), pad: pad };
+  }
+
+  function printRender(o, dpr) {
+    const geo = printGeometry(o);
+    if (!geo) return null;
+    return R.exportPNG(state, {
+      scale: geo.zoom,
+      padding: geo.pad,
+      dpr: dpr,
+      background: '#ffffff',   /* paper, not the app's canvas tint */
+      showGrid: o.showGrid,
+      showLabels: o.showLabels,
+      showSpecs: o.showSpecs,
+      showTimes: o.showTimes,
+    });
+  }
+
+  app.openPrintDialog = () => {
+    if (!M.docBounds(state.doc)) { app.toast('Nothing to print yet'); return; }
+    /* Start from what is already on screen, so the print matches the view. */
+    document.getElementById('printDetails').checked = state.showSpecs;
+    document.getElementById('printTimes').checked = state.showTimes;
+    document.getElementById('printLabels').checked = state.showLabels;
+    document.getElementById('printGrid').checked = false;
+    document.getElementById('printModal').classList.remove('hidden');
+    app.updatePrintPreview();
+  };
+
+  app.closePrintDialog = () => {
+    document.getElementById('printModal').classList.add('hidden');
+    const img = document.getElementById('printPreview');
+    img.removeAttribute('src');
+  };
+
+  /* The preview is the same composition at 1:1, shown small — so it shows
+     honestly how much of the detail will be readable. */
+  app.updatePrintPreview = () => {
+    const o = printOpts();
+    const off = printRender(o, 1);
+    const img = document.getElementById('printPreview');
+    const note = document.getElementById('printPreviewNote');
+    if (!off) { img.removeAttribute('src'); note.textContent = ''; return; }
+    img.src = off.toDataURL('image/png');
+    const b = M.docBounds(state.doc);
+    const geo = printGeometry(o);
+    note.textContent = R.fmt(b.w) + ' × ' + R.fmt(b.h) + ' m · A4 ' + o.orientation +
+      ' · 1:' + Math.round(1000 / (geo.zoom / MM)) +
+      (o.tables ? ' · plus summary tables' : '');
+  };
+
+  function printTablesHTML(o) {
+    if (!o.tables) return '';
+    const doc = state.doc;
+    const esc = (t) => String(t == null ? '' : t)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const swatch = (c) => '<span class="swatch" style="background:' + esc(c) + '"></span>';
+    let html = '';
+
+    if (o.showTimes) {
+      const zones = doc.items.filter((it) => it.type === 'zone' && !it.hidden);
+      if (zones.length) {
+        const total = zones.reduce((sum, z) => sum + (z.duration || 0), 0);
+        html += '<h2>Zone process</h2><table><thead><tr><th>Zone</th><th>Process</th>' +
+          '<th class="num">Time</th></tr></thead><tbody>';
+        for (const z of zones) {
+          html += '<tr><td>' + swatch(z.color) + esc(z.label) + '</td><td>' + esc(z.process) +
+            '</td><td class="num">' + (z.duration ? esc(R.fmtTime(z.duration)) : '—') + '</td></tr>';
+        }
+        if (total > 0) {
+          html += '<tr class="total"><td>Total</td><td></td><td class="num">' +
+            esc(R.fmtTime(total)) + '</td></tr>';
+        }
+        html += '</tbody></table>';
+      }
+    }
+
+    if (o.showSpecs) {
+      const machines = doc.items.filter((it) => it.type === 'machine' && !it.hidden &&
+        (it.params || []).some((p) => p.k || p.v));
+      if (machines.length) {
+        html += '<h2>Machine details</h2><table><thead><tr><th>Machine</th><th>Setting</th>' +
+          '<th>Value</th></tr></thead><tbody>';
+        for (const m of machines) {
+          const rows = m.params.filter((p) => p.k || p.v);
+          rows.forEach((p, i) => {
+            html += '<tr><td>' + (i === 0 ? swatch(m.color) + esc(m.label) : '') + '</td><td>' +
+              esc(p.k) + '</td><td>' + esc(p.v) + '</td></tr>';
+          });
+        }
+        html += '</tbody></table>';
+      }
+    }
+
+    return html ? '<div class="print-break">' + html + '</div>' : '';
+  }
+
+  app.doPrint = () => {
+    const o = printOpts();
+    /* 3× supersampling puts the bitmap near 290dpi on the page. */
+    const off = printRender(o, 3);
+    if (!off) { app.toast('Nothing to print yet'); return; }
+
+    document.getElementById('printPageStyle').textContent =
+      '@page { size: A4 ' + o.orientation + '; margin: 10mm; }';
+    document.body.classList.toggle('print-portrait', o.orientation === 'portrait');
+
+    const s = M.stats(state.doc);
+    const zoneTime = state.doc.items
+      .filter((it) => it.type === 'zone' && !it.hidden)
+      .reduce((sum, z) => sum + (z.duration || 0), 0);
+
+    document.getElementById('printHead').style.display = o.header ? '' : 'none';
+    document.getElementById('printTitle').textContent = state.doc.name || 'Factory layout';
+    const meta = [];
+    if (s.extent) meta.push(R.fmt(s.extent.w) + ' × ' + R.fmt(s.extent.h) + ' m');
+    meta.push(s.machines + ' machine' + (s.machines === 1 ? '' : 's'));
+    if (o.showTimes && zoneTime > 0) meta.push(R.fmtTime(zoneTime) + ' total process time');
+    meta.push(new Date().toLocaleDateString());
+    document.getElementById('printMeta').textContent = meta.join('  ·  ');
+
+    document.getElementById('printImage').src = off.toDataURL('image/png');
+    document.getElementById('printTables').innerHTML = printTablesHTML(o);
+
+    app.closePrintDialog();
+    /* Give the browser a frame to lay the image out before the dialog opens. */
+    setTimeout(() => window.print(), 120);
+  };
+
   app.openFile = (file) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -5760,6 +6080,7 @@ window.FB = window.FB || {};
         case 'v': e.preventDefault(); app.paste(); return;
         case 'd': e.preventDefault(); app.duplicate(); return;
         case 's': e.preventDefault(); app.saveFile(); return;
+        case 'p': e.preventDefault(); app.openPrintDialog(); return;
         default: return;
       }
     }
@@ -5917,6 +6238,15 @@ window.FB = window.FB || {};
     });
     document.getElementById('btnSave').addEventListener('click', app.saveFile);
     document.getElementById('btnPng').addEventListener('click', app.exportPNG);
+    document.getElementById('btnPrint').addEventListener('click', app.openPrintDialog);
+    document.getElementById('btnPrintGo').addEventListener('click', app.doPrint);
+    document.getElementById('btnPrintClose').addEventListener('click', app.closePrintDialog);
+    document.getElementById('btnPrintCancel').addEventListener('click', app.closePrintDialog);
+    document.getElementById('printModal').addEventListener('click', (e) => {
+      if (e.target.id === 'printModal') app.closePrintDialog();
+    });
+    ['printDetails', 'printTimes', 'printLabels', 'printGrid', 'printSummary', 'printOrient']
+      .forEach((id) => document.getElementById(id).addEventListener('change', app.updatePrintPreview));
     document.getElementById('btnUndo').addEventListener('click', app.undo);
     document.getElementById('btnRedo').addEventListener('click', app.redo);
 
