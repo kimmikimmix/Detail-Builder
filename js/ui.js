@@ -204,6 +204,15 @@
     notes.addEventListener('change', () => app.commit());
     host.appendChild(row('Notes', notes));
 
+    const params = (m.params || []).filter((p) => p.k || p.v);
+    host.appendChild(el('div', { class: 'btnrow' }, [
+      button(params.length ? 'Details (' + params.length + ')' : 'Add details', () => {
+        app.showPane('process');
+        app.openFold('specs');
+        FB.ui.focusSpec(m.id);
+      }, '', 'Wash pressure, temperature, cycle time…'),
+    ]));
+
     const links = M.routesFor(state.doc, m.id);
     host.appendChild(el('p', { class: 'note', text: 'Footprint ' + R.fmt(m.w * m.h) + ' m² · ' + links.length + ' route' + (links.length === 1 ? '' : 's') + ' attached' }));
   }
@@ -214,6 +223,14 @@
     host.appendChild(row('Size (m)', numberInput(z.w, 0.5, (v) => { z.w = Math.max(0.5, v); }), numberInput(z.h, 0.5, (v) => { z.h = Math.max(0.5, v); })));
     host.appendChild(row('Colour', colorInput(z.color, (v) => { z.color = v; })));
     host.appendChild(checkInput('Hatched fill', z.hatch, (v) => { z.hatch = v; }));
+    host.appendChild(row('Time (min)', numberInput(z.duration, 1, (v) => { z.duration = Math.max(0, v); })));
+    host.appendChild(el('div', { class: 'btnrow' }, [
+      button(z.process ? 'Edit process' : 'Describe process', () => {
+        app.showPane('process');
+        app.openFold('zones');
+        FB.ui.focusZone(z.id);
+      }, '', 'What happens in this zone, and when'),
+    ]));
     host.appendChild(el('p', { class: 'note', text: 'Area ' + R.fmt(z.w * z.h) + ' m² · zones sit behind machines and only catch clicks on their border or title.' }));
   }
 
@@ -320,12 +337,15 @@
   }
 
   function commonActions(items) {
+    const allLocked = items.every((it) => it.locked);
     return el('div', {}, [
       el('div', { class: 'subhead', text: 'Actions' }),
       el('div', { class: 'btnrow' }, [
         button('Duplicate', () => app.duplicate()),
         button('Forward', () => app.reorder(1), '', 'Bring forward (])'),
         button('Back', () => app.reorder(-1), '', 'Send backward ([)'),
+        button(allLocked ? 'Unlock' : 'Lock', () => app.setLocked(items.map((i) => i.id), !allLocked), '',
+          'A locked item cannot be selected or dragged on the canvas'),
         button('Delete', () => app.deleteSelection(), 'danger'),
       ]),
     ]);
@@ -483,6 +503,298 @@
     card.scrollIntoView({ block: 'nearest' });
     const input = card.querySelector('.step-title');
     if (input) { input.focus(); input.select(); }
+  };
+
+  /* ---------- machine details ---------- */
+
+  function itemName(doc, it) {
+    switch (it.type) {
+      case 'machine': return it.label || 'Machine';
+      case 'zone': return it.label || 'Zone';
+      case 'label': return it.text || 'Text';
+      case 'wall': return 'Wall · ' + it.points.length + ' pts';
+      case 'route': {
+        const nm = (e) => {
+          if (!e) return '?';
+          if (e.item) { const h = M.byId(doc, e.item); return h ? (h.label || h.text || h.type) : 'missing'; }
+          return 'point';
+        };
+        return it.label || (nm(it.from) + ' → ' + nm(it.to));
+      }
+      default: return it.type;
+    }
+  }
+  U.itemName = itemName;
+
+  U.refreshSpecs = () => {
+    const host = document.getElementById('specList');
+    if (!host) return;
+    host.innerHTML = '';
+    const machines = state.doc.items.filter((it) => it.type === 'machine');
+
+    const count = document.getElementById('specCount');
+    if (count) {
+      const withDetails = machines.filter((m) => (m.params || []).some((p) => p.k || p.v)).length;
+      count.textContent = machines.length ? withDetails + ' of ' + machines.length + ' filled in' : '';
+    }
+
+    if (!machines.length) {
+      host.appendChild(el('div', { class: 'spec-empty', text: 'No machines on the layout yet.' }));
+      return;
+    }
+    for (const m of machines) host.appendChild(specCard(m));
+  };
+
+  function specCard(m) {
+    if (!Array.isArray(m.params)) m.params = [];
+
+    const dot = el('span', { class: 'spec-dot' });
+    dot.style.background = m.color;
+
+    const name = el('span', { class: 'spec-name', text: m.label || 'Machine', title: 'Select this machine' });
+    name.addEventListener('click', () => app.focusItem(m.id));
+
+    const rows = el('div', { class: 'spec-rows' });
+    m.params.forEach((p, i) => rows.appendChild(specRow(m, p, i)));
+
+    const add = el('button', { class: 'spec-add', text: '+ detail' });
+    add.addEventListener('click', () => {
+      m.params.push(M.param('', ''));
+      app.commit();
+      U.refreshSpecs();
+      const card = document.querySelector('.spec-card[data-id="' + m.id + '"]');
+      const inputs = card && card.querySelectorAll('.spec-row input.k');
+      if (inputs && inputs.length) inputs[inputs.length - 1].focus();
+    });
+
+    const card = el('div', { class: 'spec-card' }, [
+      el('div', { class: 'spec-head' }, [dot, name]),
+      rows,
+      add,
+    ]);
+    card.dataset.id = m.id;
+    return card;
+  }
+
+  function specRow(m, p, i) {
+    const k = el('input', { class: 'k', type: 'text', placeholder: 'Setting' });
+    k.value = p.k;
+    k.addEventListener('input', () => { p.k = k.value; app.invalidate(); });
+    k.addEventListener('change', () => app.commit());
+
+    const v = el('input', { type: 'text', placeholder: 'Value' });
+    v.value = p.v;
+    v.addEventListener('input', () => { p.v = v.value; app.invalidate(); });
+    v.addEventListener('change', () => app.commit());
+
+    const rm = el('button', { class: 'rm', text: '✕', title: 'Remove this detail' });
+    rm.addEventListener('click', () => {
+      m.params.splice(i, 1);
+      app.commit();
+      U.refreshSpecs();
+    });
+
+    return el('div', { class: 'spec-row' }, [k, v, rm]);
+  }
+
+  U.focusSpec = (machineId) => {
+    U.refreshSpecs();
+    const card = document.querySelector('.spec-card[data-id="' + machineId + '"]');
+    if (!card) return;
+    card.scrollIntoView({ block: 'center' });
+    const input = card.querySelector('.spec-row input.k') || card.querySelector('.spec-add');
+    if (input) input.focus();
+  };
+
+  /* ---------- zone process ---------- */
+
+  U.refreshZones = () => {
+    const host = document.getElementById('zoneList');
+    if (!host) return;
+    host.innerHTML = '';
+    const zones = state.doc.items.filter((it) => it.type === 'zone');
+
+    const total = zones.reduce((sum, z) => sum + (z.duration || 0), 0);
+    const totalEl = document.getElementById('zoneTotal');
+    if (totalEl) totalEl.textContent = total > 0 ? 'total ' + R.fmtTime(total) : (zones.length ? '' : '');
+
+    if (!zones.length) {
+      host.appendChild(el('div', { class: 'spec-empty', text: 'Draw a zone to describe what happens in it.' }));
+      return;
+    }
+    for (const z of zones) host.appendChild(zoneCard(z));
+  };
+
+  function zoneCard(z) {
+    const dot = el('span', { class: 'spec-dot' });
+    dot.style.background = z.color;
+
+    const name = el('span', { class: 'spec-name', text: z.label || 'Zone', title: 'Select this zone' });
+    name.addEventListener('click', () => app.focusItem(z.id));
+
+    const text = el('textarea', { rows: 3, placeholder: 'What happens here, and when — shifts, sequence, who runs it…' });
+    text.value = z.process || '';
+    text.addEventListener('input', () => { z.process = text.value; app.invalidate(); });
+    text.addEventListener('change', () => app.commit());
+
+    const time = el('input', { type: 'number', step: '1', min: '0' });
+    time.value = R.fmt(z.duration || 0);
+    time.addEventListener('input', () => {
+      z.duration = Math.max(0, parseFloat(time.value) || 0);
+      app.invalidate();
+    });
+    time.addEventListener('change', () => { app.commit(); U.refreshZones(); });
+
+    const card = el('div', { class: 'zone-card' }, [
+      el('div', { class: 'spec-head' }, [dot, name]),
+      text,
+      el('div', { class: 'zone-time' }, [
+        time,
+        el('span', { text: 'minutes to process' }),
+      ]),
+    ]);
+    card.dataset.id = z.id;
+    return card;
+  }
+
+  U.focusZone = (zoneId) => {
+    U.refreshZones();
+    const card = document.querySelector('.zone-card[data-id="' + zoneId + '"]');
+    if (!card) return;
+    card.scrollIntoView({ block: 'center' });
+    const t = card.querySelector('textarea');
+    if (t) t.focus();
+  };
+
+  /* ---------- layers ---------- */
+
+  const EYE_ON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l16 16"/><path d="M9.9 5.2A9.7 9.7 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4M6.3 7.7A17 17 0 0 0 2 12s3.5 7 10 7a9.6 9.6 0 0 0 4-.85"/></svg>';
+  const LOCK_ON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+  const LOCK_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>';
+
+  const TYPE_LABEL = { machine: 'machine', zone: 'zone', wall: 'wall', route: 'route', label: 'text' };
+
+  U.refreshLayers = () => {
+    const host = document.getElementById('layerList');
+    if (!host) return;
+    host.innerHTML = '';
+    const items = state.doc.items;
+
+    const count = document.getElementById('layerCount');
+    if (count) {
+      const locked = items.filter((i) => i.locked).length;
+      const hidden = items.filter((i) => i.hidden).length;
+      const bits = [items.length + ' items'];
+      if (locked) bits.push(locked + ' locked');
+      if (hidden) bits.push(hidden + ' hidden');
+      count.textContent = bits.join(' · ');
+    }
+
+    if (!items.length) {
+      host.appendChild(el('div', { class: 'spec-empty', text: 'Nothing on the layout yet.' }));
+      return;
+    }
+
+    /* Top of the stack first, matching what you see. */
+    for (let i = items.length - 1; i >= 0; i--) host.appendChild(layerRow(items[i], i));
+  };
+
+  function layerRow(it, index) {
+    const dot = el('span', { class: 'layer-dot' });
+    dot.style.background = it.color || '#64748b';
+
+    const eye = el('button', {
+      class: 'layer-btn' + (it.hidden ? '' : ' on'),
+      html: it.hidden ? EYE_OFF : EYE_ON,
+      title: it.hidden ? 'Show' : 'Hide',
+    });
+    eye.addEventListener('click', (e) => { e.stopPropagation(); app.setHidden([it.id], !it.hidden); });
+
+    const lock = el('button', {
+      class: 'layer-btn' + (it.locked ? ' on' : ''),
+      html: it.locked ? LOCK_ON : LOCK_OFF,
+      title: it.locked ? 'Unlock' : 'Lock',
+    });
+    lock.addEventListener('click', (e) => { e.stopPropagation(); app.setLocked([it.id], !it.locked); });
+
+    const up = el('button', { class: 'layer-btn', text: '↑', title: 'Bring forward' });
+    up.addEventListener('click', (e) => { e.stopPropagation(); app.moveItem(it.id, 1); });
+    const down = el('button', { class: 'layer-btn', text: '↓', title: 'Send backward' });
+    down.addEventListener('click', (e) => { e.stopPropagation(); app.moveItem(it.id, -1); });
+    up.disabled = index === state.doc.items.length - 1;
+    down.disabled = index === 0;
+
+    const row = el('div', {
+      class: 'layer-row' + (state.selection.has(it.id) ? ' sel' : '') + (it.hidden ? ' off' : ''),
+      title: it.locked ? 'Locked — unlock to edit it on the canvas' : 'Select',
+    }, [
+      dot,
+      el('span', { class: 'layer-name', text: itemName(state.doc, it) }),
+      el('span', { class: 'layer-kind', text: TYPE_LABEL[it.type] || it.type }),
+      up, down, eye, lock,
+    ]);
+    row.addEventListener('click', () => {
+      if (it.locked || it.hidden) { app.toast(it.locked ? 'That layer is locked' : 'That layer is hidden'); return; }
+      app.focusItem(it.id);
+    });
+    return row;
+  }
+
+  /* ---------- animated run ---------- */
+
+  U.refreshStops = () => {
+    const host = document.getElementById('stopList');
+    if (!host) return;
+    host.innerHTML = '';
+    const anim = M.anim(state.doc);
+
+    if (!anim.stops.length) {
+      host.appendChild(el('div', { class: 'spec-empty', html:
+        'No run defined.<br>Use <b>Build from routes</b>, or select a machine and <b>Add selected</b>.' }));
+      return;
+    }
+
+    anim.stops.forEach((st, i) => {
+      const item = M.byId(state.doc, st.item);
+      if (!item) return;
+
+      const name = el('span', { class: 'stop-name', text: itemName(state.doc, item), title: 'Select it' });
+      name.addEventListener('click', () => app.focusItem(item.id));
+
+      const dwell = el('input', { class: 'stop-dwell', type: 'number', step: '0.5', min: '0' });
+      dwell.value = R.fmt(st.dwell);
+      dwell.addEventListener('input', () => {
+        st.dwell = Math.max(0, parseFloat(dwell.value) || 0);
+        app.rebuildRun();
+      });
+      dwell.addEventListener('change', () => app.commit());
+
+      const up = el('button', { class: 'layer-btn', text: '↑', title: 'Earlier' });
+      up.addEventListener('click', () => app.moveStop(i, -1));
+      const down = el('button', { class: 'layer-btn', text: '↓', title: 'Later' });
+      down.addEventListener('click', () => app.moveStop(i, 1));
+      const rm = el('button', { class: 'layer-btn', text: '✕', title: 'Remove from the run' });
+      rm.addEventListener('click', () => app.removeStop(i));
+      up.disabled = i === 0;
+      down.disabled = i === anim.stops.length - 1;
+
+      const row = el('div', { class: 'stop-row' }, [
+        el('span', { class: 'stop-num', text: String(i + 1) }),
+        name, dwell,
+        el('span', { class: 'stop-unit', text: 's' }),
+        up, down, rm,
+      ]);
+      row.dataset.index = i;
+      host.appendChild(row);
+    });
+  };
+
+  /* Light touch during playback — no DOM rebuild. */
+  U.markCurrentStop = (index) => {
+    document.querySelectorAll('#stopList .stop-row').forEach((r) => {
+      r.classList.toggle('current', Number(r.dataset.index) === index);
+    });
   };
 
   FB.ui = U;

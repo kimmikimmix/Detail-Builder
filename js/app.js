@@ -26,6 +26,11 @@
     snapGuides: true,
     showGrid: true,
     showLabels: true,
+    showSpecs: false,
+    showTimes: false,
+    showRun: false,
+    focusMode: false,
+    play: { running: false, t: 0, path: null, duration: 0, at: null },
     stickyTool: false,
     spaceDown: false,
     wallThickness: 0.25,
@@ -40,7 +45,24 @@
 
   app.invalidate = () => { dirty = true; };
 
-  function frame() {
+  let lastFrame = 0;
+
+  function frame(now) {
+    const t = now || 0;
+    const dt = lastFrame ? Math.min(0.25, (t - lastFrame) / 1000) : 0;
+    lastFrame = t;
+
+    const play = state.play;
+    if (play.running && play.duration > 0) {
+      play.t += dt;
+      if (play.t >= play.duration) {
+        if (M.anim(state.doc).loop) play.t = play.t % play.duration;
+        else { play.t = play.duration; app.pauseRun(); }
+      }
+      updateRunReadout();
+      dirty = true;
+    }
+
     if (dirty) {
       dirty = false;
       R.draw(state);
@@ -52,6 +74,7 @@
 
   app.commit = () => {
     H.commit(state.doc);
+    app.rebuildRun();
     app.invalidate();
     FB.ui.refreshProps();
     FB.ui.refreshStats();
@@ -62,6 +85,10 @@
     FB.ui.refreshProps();
     FB.ui.refreshStats();
     FB.ui.refreshProcess();
+    FB.ui.refreshSpecs();
+    FB.ui.refreshZones();
+    FB.ui.refreshLayers();
+    FB.ui.refreshStops();
     app.refreshStatus();
     app.invalidate();
   };
@@ -143,7 +170,7 @@
   /* ---------- selection actions ---------- */
 
   app.selectAll = () => {
-    state.selection = new Set(state.doc.items.map((it) => it.id));
+    state.selection = new Set(state.doc.items.filter(M.pickable).map((it) => it.id));
     app.refresh();
   };
 
@@ -347,6 +374,151 @@
     app.toast('Cascaded ' + created.length + ' machine' + (created.length === 1 ? '' : 's'));
   };
 
+  /* ---------- layers ---------- */
+
+  app.setLocked = (ids, locked) => {
+    for (const id of ids) {
+      const it = M.byId(state.doc, id);
+      if (!it) continue;
+      it.locked = locked;
+      if (locked) state.selection.delete(id);
+    }
+    app.commit();
+    app.refresh();
+  };
+
+  app.setHidden = (ids, hidden) => {
+    for (const id of ids) {
+      const it = M.byId(state.doc, id);
+      if (!it) continue;
+      it.hidden = hidden;
+      if (hidden) state.selection.delete(id);
+    }
+    app.commit();
+    app.refresh();
+  };
+
+  app.moveItem = (id, dir) => {
+    const items = state.doc.items;
+    const i = items.findIndex((it) => it.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= items.length) return;
+    [items[i], items[j]] = [items[j], items[i]];
+    app.commit();
+    app.refresh();
+  };
+
+  app.lockAll = (locked) => {
+    for (const it of state.doc.items) it.locked = locked;
+    if (locked) state.selection.clear();
+    app.commit();
+    app.refresh();
+    app.toast(locked ? 'Every layer locked' : 'Every layer unlocked');
+  };
+
+  app.showAll = () => {
+    let n = 0;
+    for (const it of state.doc.items) if (it.hidden) { it.hidden = false; n++; }
+    app.commit();
+    app.refresh();
+    app.toast(n ? n + ' layer' + (n === 1 ? '' : 's') + ' shown again' : 'Nothing was hidden');
+  };
+
+  /* ---------- animated run ---------- */
+
+  app.rebuildRun = () => {
+    const play = state.play;
+    play.path = M.animPath(state.doc);
+    play.duration = M.animDuration(state.doc, play.path);
+    if (play.t > play.duration) play.t = 0;
+    updateRunReadout();
+  };
+
+  function updateRunReadout() {
+    const play = state.play;
+    play.at = play.path && play.path.stops.length ? M.animAt(state.doc, play.path, play.t) : null;
+
+    const time = document.getElementById('runTime');
+    if (time) {
+      time.textContent = play.duration > 0
+        ? R.fmt(play.t) + ' / ' + R.fmt(play.duration) + ' s'
+        : (play.path && play.path.stops.length ? 'no travel time' : 'no run yet');
+    }
+    const scrub = document.getElementById('runScrub');
+    if (scrub && document.activeElement !== scrub) {
+      scrub.value = play.duration > 0 ? Math.round((play.t / play.duration) * 1000) : 0;
+    }
+    if (play.at) FB.ui.markCurrentStop(play.at.stop ? play.at.index : -1);
+  }
+
+  app.playRun = () => {
+    const play = state.play;
+    if (!play.path || !play.path.stops.length) { app.toast('Add some stops to the run first'); return; }
+    if (play.duration <= 0) { app.toast('Give the stops some work time, or space them out'); return; }
+    play.running = true;
+    setPlayButton();
+    app.invalidate();
+  };
+
+  app.pauseRun = () => {
+    state.play.running = false;
+    setPlayButton();
+    app.invalidate();
+  };
+
+  app.toggleRun = () => (state.play.running ? app.pauseRun() : app.playRun());
+
+  app.restartRun = () => {
+    state.play.t = 0;
+    updateRunReadout();
+    app.invalidate();
+  };
+
+  function setPlayButton() {
+    const b = document.getElementById('btnPlay');
+    if (b) b.textContent = state.play.running ? '❚❚ Pause' : '▶ Play';
+  }
+
+  app.buildRun = () => {
+    const order = M.buildRunFromRoutes(state.doc);
+    if (!order.length) { app.toast('No routes to follow — draw some first'); return; }
+    const anim = M.anim(state.doc);
+    anim.stops = order.map((id) => {
+      const existing = anim.stops.find((st) => st.item === id);
+      return M.stop(id, existing ? existing.dwell : 1);
+    });
+    state.play.t = 0;
+    app.commit();
+    app.refresh();
+    app.toast('Run built from ' + order.length + ' stops');
+  };
+
+  app.addStop = () => {
+    const anim = M.anim(state.doc);
+    const picked = state.doc.items.filter((it) => state.selection.has(it.id) && (it.type === 'machine' || it.type === 'zone'));
+    if (!picked.length) { app.toast('Select a machine or zone first'); return; }
+    for (const it of picked) anim.stops.push(M.stop(it.id, 1));
+    app.commit();
+    app.refresh();
+  };
+
+  app.removeStop = (i) => {
+    const anim = M.anim(state.doc);
+    anim.stops.splice(i, 1);
+    state.play.t = 0;
+    app.commit();
+    app.refresh();
+  };
+
+  app.moveStop = (i, dir) => {
+    const anim = M.anim(state.doc);
+    const j = i + dir;
+    if (j < 0 || j >= anim.stops.length) return;
+    [anim.stops[i], anim.stops[j]] = [anim.stops[j], anim.stops[i]];
+    app.commit();
+    app.refresh();
+  };
+
   /* ---------- machine types ---------- */
 
   let editingType = null;
@@ -530,12 +702,57 @@
     app.toast('Process exported');
   };
 
+  const PANES = ['design', 'process', 'layers', 'play'];
+
   function showPane(name) {
     document.querySelectorAll('#sideTabs .tab').forEach((t) => t.classList.toggle('active', t.dataset.pane === name));
-    document.getElementById('paneDesign').classList.toggle('hidden', name !== 'design');
-    document.getElementById('paneProcess').classList.toggle('hidden', name !== 'process');
+    for (const p of PANES) {
+      const node = document.getElementById('pane' + p[0].toUpperCase() + p.slice(1));
+      if (node) node.classList.toggle('hidden', p !== name);
+    }
+    /* Seeing the run's shape only matters while you are editing it. */
+    state.showRun = name === 'play';
+    if (state.focusMode) app.setFocusMode(false);
+    app.invalidate();
   }
   app.showPane = showPane;
+
+  app.openFold = (name) => {
+    const fold = document.querySelector('.fold[data-fold="' + name + '"]');
+    if (fold) fold.classList.add('open');
+  };
+
+  /* Resizing the canvas would otherwise slide the drawing sideways, so pin
+     whatever is in the middle of the view. */
+  function keepingCentre(fn) {
+    const before = R.toWorld(state.cam, R.width / 2, R.height / 2);
+    fn();
+    setTimeout(() => {
+      R.resize();
+      const after = R.toWorld(state.cam, R.width / 2, R.height / 2);
+      state.cam.x += before.x - after.x;
+      state.cam.y += before.y - after.y;
+      app.invalidate();
+    }, 0);
+  }
+  app.keepingCentre = keepingCentre;
+
+  app.setFocusMode = (on) => {
+    keepingCentre(() => {
+      state.focusMode = on;
+      document.body.classList.toggle('focus', on);
+      const btn = document.getElementById('btnFocus');
+      if (btn) btn.classList.toggle('on', on);
+    });
+  };
+
+  app.toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => app.toast('Full screen was blocked by the browser'));
+    }
+  };
 
   /* ---------- view ---------- */
 
@@ -643,6 +860,11 @@
     if (!Array.isArray(state.doc.process)) state.doc.process = [];
     if (!M.typeById(doc, state.activeType)) state.activeType = null;
     FB.ui.buildPalette();
+    syncRunControls();
+    state.play.running = false;
+    state.play.t = 0;
+    app.rebuildRun();
+    setPlayButton();
     H.reset(doc);
     app.zoomFit();
     app.refresh();
@@ -778,6 +1000,8 @@
       return;
     }
 
+    if (e.key === '\\') { e.preventDefault(); app.setFocusMode(!state.focusMode); return; }
+    if (e.key === 'p' || e.key === 'P') { app.toggleRun(); return; }
     if (e.key === '[') { app.reorder(-1); return; }
     if (e.key === ']') { app.reorder(1); return; }
     if (e.key === '?') { toggleHelp(true); return; }
@@ -824,9 +1048,22 @@
     scheduleSave();
   };
 
+  function syncRunControls() {
+    const anim = M.anim(state.doc);
+    const speed = document.getElementById('runSpeed');
+    if (speed) {
+      speed.value = anim.speed;
+      document.getElementById('runSpeedVal').textContent = R.fmt(anim.speed) + ' m/s';
+    }
+    const loop = document.getElementById('runLoop');
+    if (loop) loop.checked = anim.loop !== false;
+  }
+
   function afterDocSwap() {
     if (!M.typeById(state.doc, state.activeType)) state.activeType = null;
     FB.ui.buildPalette();
+    syncRunControls();
+    app.rebuildRun();
   }
 
   function pruneSelection() {
@@ -870,6 +1107,44 @@
     document.getElementById('btnRedo').addEventListener('click', app.redo);
 
     document.getElementById('chkSticky').addEventListener('change', (e) => { state.stickyTool = e.target.checked; });
+    document.getElementById('chkSpecs').addEventListener('change', (e) => { state.showSpecs = e.target.checked; app.invalidate(); });
+    document.getElementById('chkTimes').addEventListener('change', (e) => { state.showTimes = e.target.checked; app.invalidate(); });
+
+    document.getElementById('btnFocus').addEventListener('click', () => app.setFocusMode(!state.focusMode));
+    document.getElementById('btnFullscreen').addEventListener('click', app.toggleFullscreen);
+
+    document.querySelectorAll('.fold-head').forEach((head) => {
+      head.addEventListener('click', () => head.parentElement.classList.toggle('open'));
+    });
+
+    document.getElementById('btnLockAll').addEventListener('click', () => app.lockAll(true));
+    document.getElementById('btnUnlockAll').addEventListener('click', () => app.lockAll(false));
+    document.getElementById('btnShowAll').addEventListener('click', app.showAll);
+
+    document.getElementById('btnPlay').addEventListener('click', app.toggleRun);
+    document.getElementById('btnRestart').addEventListener('click', app.restartRun);
+    document.getElementById('btnBuildRun').addEventListener('click', app.buildRun);
+    document.getElementById('btnAddStop').addEventListener('click', app.addStop);
+    document.getElementById('runScrub').addEventListener('input', (e) => {
+      const play = state.play;
+      if (play.duration > 0) {
+        play.t = (Number(e.target.value) / 1000) * play.duration;
+        updateRunReadout();
+        app.invalidate();
+      }
+    });
+    const speed = document.getElementById('runSpeed');
+    speed.addEventListener('input', () => {
+      M.anim(state.doc).speed = Number(speed.value);
+      document.getElementById('runSpeedVal').textContent = speed.value + ' m/s';
+      app.rebuildRun();
+      app.invalidate();
+    });
+    speed.addEventListener('change', () => app.commit());
+    document.getElementById('runLoop').addEventListener('change', (e) => {
+      M.anim(state.doc).loop = e.target.checked;
+      app.commit();
+    });
     document.getElementById('chkGrid').addEventListener('change', (e) => { state.showGrid = e.target.checked; app.invalidate(); });
     document.getElementById('chkSnap').addEventListener('change', (e) => { state.snap = e.target.checked; });
     document.getElementById('chkLabels').addEventListener('change', (e) => { state.showLabels = e.target.checked; app.invalidate(); });
@@ -888,9 +1163,16 @@
     document.getElementById('btnStepsMd').addEventListener('click', app.exportSteps);
     document.getElementById('btnWide').addEventListener('click', () => {
       const side = document.querySelector('.sidebar.right');
+      const before = R.toWorld(state.cam, R.width / 2, R.height / 2);
       side.classList.toggle('wide');
       /* The canvas keeps its flex width, so re-measure after the transition. */
-      setTimeout(() => { R.resize(); app.invalidate(); }, 180);
+      setTimeout(() => {
+        R.resize();
+        const after = R.toWorld(state.cam, R.width / 2, R.height / 2);
+        state.cam.x += before.x - after.x;
+        state.cam.y += before.y - after.y;
+        app.invalidate();
+      }, 180);
     });
 
     document.getElementById('btnCascade').addEventListener('click', app.cascade);

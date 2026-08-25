@@ -102,6 +102,55 @@ actually runs — you write it, in your own words, in whatever detail you want.
 
 ![The Process tab, with steps linked to machines on the floor](docs/process-panel.png)
 
+![Machine details and zone times shown on the layout](docs/process-panels.png)
+
+### Machine details and zone process
+
+The **Process** tab holds three sections that fold open and shut independently:
+
+- **Written steps** — the process in your own words (see above).
+- **Machine details** — per-machine settings: wash pressure, temperature, cycle
+  time, tooling, whatever the machine needs. Any number of rows per machine.
+- **Zone process** — what each zone does and when, plus **how many minutes it
+  takes**. The section header totals the time across every zone.
+
+Two toolbar switches put that information on the drawing itself: **Specs**
+tucks each machine's details under its box, and **Times** puts a cycle-time
+badge and the process line on each zone.
+
+### The animated run
+
+![The animated run, with numbered stops and an editable stop list](docs/animated-run.png)
+
+The **Run** tab walks a part through the plant so you can watch the flow.
+
+- **Build from routes** follows your arrows from the first machine with no
+  inbound route and proposes the whole order; or select a machine and press
+  **Add selected**.
+- **Edit the run freely** — reorder stops with ↑ ↓, drop one with ✕, and set the
+  seconds of work at each stop. Between stops the token follows the route you
+  drew; where there is no route it takes a straight line (drawn dashed).
+- <kbd>P</kbd> or the Play button runs it, the scrubber moves through it, and
+  **Speed** is travel speed in metres per second. The run is saved with the
+  layout.
+
+### Layers, locking and hiding
+
+The **Layers** tab lists everything top-of-stack first.
+
+- Click a row to select it; ↑ ↓ change what draws over what.
+- The **padlock** stops an item being selected or dragged — the usual fix once
+  walls and zones are where you want them and you're working on machines.
+- The **eye** takes an item off the canvas entirely; **Show all** brings the
+  hidden ones back.
+
+### Room to work
+
+<kbd>\\</kbd> or the ⛶ button is **focus mode**: both side panels get out of
+the way and the canvas fills the window, keeping whatever was in the middle of
+the view in the middle. A second button asks the browser for real full screen,
+and **↔** beside the tabs widens the right-hand panel for writing.
+
 ### Cascading
 
 Select one or more machines, then use the **Cascade** panel: choose a copy
@@ -132,6 +181,8 @@ reported in the Layout stats panel as you build.
 | Arrows | Nudge by ⅕ grid, or a full grid step with <kbd>Shift</kbd> |
 | <kbd>[</kbd> / <kbd>]</kbd> | Send backward / bring forward |
 | <kbd>F</kbd> | Zoom to fit |
+| <kbd>P</kbd> | Play / pause the animated run |
+| <kbd>\\</kbd> | Focus mode — hide both side panels |
 | <kbd>Shift</kbd>+click | Add to / remove from the selection |
 | <kbd>Alt</kbd>+drag | Ignore grid snapping for this drag |
 | <kbd>Space</kbd>+drag, or middle-drag | Pan · scroll wheel zooms at the cursor |
@@ -211,3 +262,28 @@ The written process rides along in the same file:
 
 `link` is the id of the item the step happens at, or `null`. Links pointing at
 items that no longer exist are dropped on load.
+
+Machines carry their settings, zones carry their process and cycle time, every
+item can be locked or hidden, and the animated run is stored alongside:
+
+```json
+{
+  "items": [
+    { "id": "i1", "type": "machine", "label": "Washer",
+      "params": [{ "k": "Wash pressure", "v": "120 bar" },
+                 { "k": "Temp", "v": "60 °C" }],
+      "locked": false, "hidden": false },
+    { "id": "z1", "type": "zone", "label": "Machining Cell",
+      "process": "Rough and finish machining, two shifts.", "duration": 40 }
+  ],
+  "animation": {
+    "stops": [{ "item": "i1", "dwell": 1 }],
+    "speed": 6,
+    "loop": true
+  }
+}
+```
+
+**Older files load unchanged.** Every one of these fields is optional: a layout
+saved by an earlier version comes back with empty details, no locks, and no run
+— nothing is lost and nothing needs converting.

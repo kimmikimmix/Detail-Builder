@@ -494,6 +494,7 @@
         if (box && (box.w > 0.05 || box.h > 0.05)) {
           const picked = new Set(d.keep);
           for (const it of state.doc.items) {
+            if (!M.pickable(it)) continue;
             const b = M.bounds(state.doc, it);
             if (b && G.aabbOverlap(b, box)) picked.add(it.id);
           }

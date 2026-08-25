@@ -28,7 +28,18 @@
     types: [],
     items: [],
     process: [],
+    animation: { stops: [], speed: 6, loop: true },
   });
+
+  /* One stop on the animated run: an item to visit and how long work takes
+     there, in seconds. */
+  M.stop = (itemId, dwell) => ({ item: itemId, dwell: dwell === undefined ? 1 : Math.max(0, dwell) });
+
+  M.anim = (doc) => {
+    if (!doc.animation || typeof doc.animation !== 'object') doc.animation = { stops: [], speed: 6, loop: true };
+    if (!Array.isArray(doc.animation.stops)) doc.animation.stops = [];
+    return doc.animation;
+  };
 
   /* ---------- machine types ---------- */
 
@@ -86,7 +97,12 @@
     color: type ? type.color : M.UNTYPED_COLOR,
     clearance: 0,
     notes: '',
+    params: [],          /* [{ k: 'Wash pressure', v: '120 bar' }] */
+    locked: false,
+    hidden: false,
   });
+
+  M.param = (k, v) => ({ k: k || '', v: v || '' });
 
   M.wall = (points, thickness) => ({
     id: M.uid(),
@@ -95,6 +111,8 @@
     thickness: thickness || 0.25,
     closed: false,
     color: '#3f4756',
+    locked: false,
+    hidden: false,
   });
 
   M.zone = (x, y, w, h, label) => ({
@@ -105,6 +123,10 @@
     label: label || 'Zone',
     color: '#4f9cf9',
     hatch: false,
+    process: '',         /* what happens here, and when */
+    duration: 0,         /* minutes of process time */
+    locked: false,
+    hidden: false,
   });
 
   M.label = (x, y, text) => ({
@@ -115,6 +137,8 @@
     size: 0.8,
     color: '#1f2937',
     rot: 0,
+    locked: false,
+    hidden: false,
   });
 
   M.route = (from, to, waypoints) => ({
@@ -128,6 +152,8 @@
     dashed: false,
     arrows: 'end',           /* 'end' | 'both' | 'none' */
     label: '',
+    locked: false,
+    hidden: false,
   });
 
   /* An endpoint is either { item: id } (docked to a machine/zone) or { x, y }. */
@@ -249,9 +275,12 @@
   /* ---------- hit testing ---------- */
 
   /* tol is in world units and should scale with zoom. */
+  M.pickable = (it) => !it.locked && !it.hidden;
+
   M.hitTest = (doc, p, tol) => {
     for (let i = doc.items.length - 1; i >= 0; i--) {
       const it = doc.items[i];
+      if (!M.pickable(it)) continue;
       if (M.hits(doc, it, p, tol)) return it;
     }
     return null;
@@ -291,7 +320,7 @@
     const pad = tol || 0;
     for (let i = doc.items.length - 1; i >= 0; i--) {
       const it = doc.items[i];
-      if (it.type === 'machine' && G.pointInRect(p, it, pad)) return it;
+      if (it.type === 'machine' && !it.hidden && G.pointInRect(p, it, pad)) return it;
     }
     return null;
   };
@@ -375,6 +404,18 @@
 
     if (!doc.types.length) deriveTypes(doc);
 
+    const anim = M.anim(doc);
+    if (raw.animation && typeof raw.animation === 'object') {
+      anim.speed = Math.max(0.5, num(raw.animation.speed, 6));
+      anim.loop = raw.animation.loop !== false;
+      if (Array.isArray(raw.animation.stops)) {
+        for (const st of raw.animation.stops) {
+          if (!st || typeof st !== 'object' || !seen.has(st.item)) continue;
+          anim.stops.push(M.stop(st.item, num(st.dwell, 1)));
+        }
+      }
+    }
+
     if (Array.isArray(raw.process)) {
       for (const st of raw.process) {
         if (!st || typeof st !== 'object') continue;
@@ -393,6 +434,14 @@
   const num = (v, fallback) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
   const str = (v, fallback) => (typeof v === 'string' ? v : fallback);
 
+  /* Flags every item shares. Missing ones default to false, so files written
+     before locking existed load unchanged. */
+  const flags = (out, raw) => {
+    out.locked = !!raw.locked;
+    out.hidden = !!raw.hidden;
+    return out;
+  };
+
   M.sanitize = (it, seen) => {
     if (!it || typeof it !== 'object') return null;
     let id = str(it.id, '');
@@ -408,7 +457,12 @@
         base.color = str(it.color, base.color);
         base.clearance = Math.max(0, num(it.clearance, 0));
         base.notes = str(it.notes, '');
-        return base;
+        base.params = Array.isArray(it.params)
+          ? it.params.filter((p) => p && typeof p === 'object')
+              .map((p) => M.param(str(p.k, ''), str(p.v, '')))
+              .filter((p) => p.k || p.v)
+          : [];
+        return flags(base, it);
       }
       case 'zone': {
         const z = M.zone(num(it.x, 0), num(it.y, 0), Math.max(0.5, num(it.w, 4)), Math.max(0.5, num(it.h, 4)), str(it.label, 'Zone'));
@@ -416,7 +470,9 @@
         z.rot = num(it.rot, 0);
         z.color = str(it.color, z.color);
         z.hatch = !!it.hatch;
-        return z;
+        z.process = str(it.process, '');
+        z.duration = Math.max(0, num(it.duration, 0));
+        return flags(z, it);
       }
       case 'wall': {
         if (!Array.isArray(it.points) || it.points.length < 2) return null;
@@ -428,7 +484,7 @@
         w.id = id;
         w.closed = !!it.closed;
         w.color = str(it.color, w.color);
-        return w;
+        return flags(w, it);
       }
       case 'label': {
         const l = M.label(num(it.x, 0), num(it.y, 0), str(it.text, 'Label'));
@@ -436,7 +492,7 @@
         l.size = Math.max(0.2, num(it.size, 0.8));
         l.color = str(it.color, l.color);
         l.rot = num(it.rot, 0);
-        return l;
+        return flags(l, it);
       }
       case 'route': {
         const end = (e) => {
@@ -455,7 +511,7 @@
         r.dashed = !!it.dashed;
         r.arrows = ['end', 'both', 'none'].includes(it.arrows) ? it.arrows : 'end';
         r.label = str(it.label, '');
-        return r;
+        return flags(r, it);
       }
       default:
         return null;
@@ -487,6 +543,114 @@
       doc.types.push(type);
     }
   }
+
+  /* ---------- animated run ---------- */
+
+  /* The full journey as a list of legs. Each leg is the polyline from one stop
+     to the next: the route between them when there is one, else a straight
+     line, so an unrouted pair still animates. */
+  M.animPath = (doc) => {
+    const anim = M.anim(doc);
+    const legs = [];
+    const stops = anim.stops.map((st) => ({ st, item: M.byId(doc, st.item) })).filter((s) => s.item);
+
+    for (let i = 0; i < stops.length - 1; i++) {
+      const a = stops[i].item, b = stops[i + 1].item;
+      const route = doc.items.find((it) => it.type === 'route' && !it.hidden &&
+        ((it.from.item === a.id && it.to.item === b.id) || (it.from.item === b.id && it.to.item === a.id)));
+
+      let pts;
+      if (route) {
+        pts = M.routePath(doc, route);
+        /* Walk the route the way this leg travels. */
+        if (route.from.item === b.id) pts = pts.slice().reverse();
+      } else {
+        const ca = G.rectCenter(M.isRect(a) ? a : { x: a.x, y: a.y, w: 0, h: 0 });
+        const cb = G.rectCenter(M.isRect(b) ? b : { x: b.x, y: b.y, w: 0, h: 0 });
+        pts = [ca, cb];
+      }
+      if (pts.length > 1) legs.push({ pts, length: G.polylineLength(pts), viaRoute: !!route });
+    }
+    return { stops, legs };
+  };
+
+  /* Total run time in seconds: dwell at each stop plus travel between them. */
+  M.animDuration = (doc, path) => {
+    const anim = M.anim(doc);
+    const speed = Math.max(0.5, anim.speed);
+    let total = 0;
+    for (const s of path.stops) total += s.st.dwell;
+    for (const leg of path.legs) total += leg.length / speed;
+    return total;
+  };
+
+  /* Where the token is at time t, and what it is doing. */
+  M.animAt = (doc, path, t) => {
+    const anim = M.anim(doc);
+    const speed = Math.max(0.5, anim.speed);
+    if (!path.stops.length) return null;
+
+    let cursor = 0;
+    for (let i = 0; i < path.stops.length; i++) {
+      const stop = path.stops[i];
+      const dwell = stop.st.dwell;
+
+      if (t <= cursor + dwell) {
+        const at = M.isRect(stop.item) ? G.rectCenter(stop.item) : { x: stop.item.x, y: stop.item.y };
+        return {
+          x: at.x, y: at.y, angle: 0,
+          stop: stop.item, index: i, working: dwell > 0,
+          progress: dwell > 0 ? (t - cursor) / dwell : 1,
+        };
+      }
+      cursor += dwell;
+
+      const leg = path.legs[i];
+      if (!leg) break;
+      const travel = leg.length / speed;
+      if (t <= cursor + travel) {
+        const frac = travel > 0 ? (t - cursor) / travel : 1;
+        const p = G.pointAlong(leg.pts, G.clamp(frac, 0, 1));
+        return { x: p.x, y: p.y, angle: p.angle, stop: null, from: stop.item, to: path.stops[i + 1].item, index: i, working: false, progress: frac };
+      }
+      cursor += travel;
+    }
+
+    const last = path.stops[path.stops.length - 1];
+    const at = M.isRect(last.item) ? G.rectCenter(last.item) : { x: last.item.x, y: last.item.y };
+    return { x: at.x, y: at.y, angle: 0, stop: last.item, index: path.stops.length - 1, working: false, progress: 1 };
+  };
+
+  /* Follow the routes out of a machine to propose a run order. */
+  M.buildRunFromRoutes = (doc) => {
+    const machines = doc.items.filter((it) => it.type === 'machine' && !it.hidden);
+    if (!machines.length) return [];
+    const routes = doc.items.filter((it) => it.type === 'route' && !it.hidden && it.from.item && it.to.item);
+
+    const outgoing = new Map();
+    const incoming = new Set();
+    for (const r of routes) {
+      if (!outgoing.has(r.from.item)) outgoing.set(r.from.item, []);
+      outgoing.get(r.from.item).push(r.to.item);
+      incoming.add(r.to.item);
+    }
+
+    /* Start where material enters: something with routes out and none in. */
+    let startId = machines.find((m) => outgoing.has(m.id) && !incoming.has(m.id));
+    if (!startId) startId = machines.find((m) => outgoing.has(m.id));
+    if (!startId) return [];
+
+    const order = [];
+    const seenIds = new Set();
+    let current = startId.id;
+    while (current && !seenIds.has(current)) {
+      seenIds.add(current);
+      order.push(current);
+      const next = (outgoing.get(current) || []).find((id) => !seenIds.has(id));
+      current = next;
+    }
+    return order;
+  };
 
   /* ---------- stats ---------- */
 
