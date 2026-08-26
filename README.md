@@ -153,7 +153,14 @@ animation never moves it in the document, so nothing is disturbed.
 
 The **Layers** tab lists everything top-of-stack first.
 
-- Click a row to select it; ↑ ↓ change what draws over what.
+- Click a row to select it. **⤒** brings an item right to the front, **⤓** sends
+  it right to the back, and **↑ ↓** move it a single step. The same four sit in
+  the Properties panel as **To front / Forward / Back / To back** and work on a
+  whole selection at once, keeping its internal order.
+- Items paint in list order, so the list is the truth about what covers what.
+  A layout saved before this was drawn grouped by kind — zones, then walls, then
+  machines, routes and text — so those files are sorted into that same order once
+  when opened and look exactly as they did.
 - The **padlock** stops an item being selected or dragged — the usual fix once
   walls and zones are where you want them and you're working on machines.
 - The **eye** takes an item off the canvas entirely; **Show all** brings the
@@ -226,7 +233,8 @@ reported in the Layout stats panel as you build.
 | <kbd>Enter</kbd> | Finish a wall or route · rename the selected item |
 | <kbd>Esc</kbd> | Cancel the current drawing, or clear the selection |
 | Arrows | Nudge by ⅕ grid, or a full grid step with <kbd>Shift</kbd> |
-| <kbd>[</kbd> / <kbd>]</kbd> | Send backward / bring forward |
+| <kbd>[</kbd> / <kbd>]</kbd> | Send backward / bring forward one step |
+| <kbd>{</kbd> / <kbd>}</kbd> | Send to back / bring to front |
 | <kbd>F</kbd> | Zoom to fit |
 | <kbd>P</kbd> | Play / pause the animated run |
 | <kbd>Ctrl</kbd>+<kbd>P</kbd> | Print the drawing |

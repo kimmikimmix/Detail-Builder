@@ -79,12 +79,9 @@
     const selected = state.selection;
     labelRects = [];
 
-    /* Painted in type order so machines sit above zones and under routes. */
-    for (const it of doc.items) if (it.type === 'zone') drawItem(ctx, state, it, view);
-    for (const it of doc.items) if (it.type === 'wall') drawItem(ctx, state, it, view);
-    for (const it of doc.items) if (it.type === 'machine') drawItem(ctx, state, it, view);
-    for (const it of doc.items) if (it.type === 'route') drawItem(ctx, state, it, view);
-    for (const it of doc.items) if (it.type === 'label') drawItem(ctx, state, it, view);
+    /* Painted in list order, so the Layers list is the truth about what covers
+       what and sending something to the top actually puts it there. */
+    for (const it of doc.items) drawItem(ctx, state, it, view);
 
     if (state.showSpecs) {
       for (const it of doc.items) if (it.type === 'machine' && !it.hidden) drawSpecs(ctx, state, it);

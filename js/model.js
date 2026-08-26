@@ -26,6 +26,7 @@
     grid: 1,
     unit: 'm',
     types: [],
+    stacking: 'list',    /* items paint in list order; see normaliseStacking */
     items: [],
     process: [],
     animation: { stops: [], speed: 6, loop: true, driver: null },
@@ -409,6 +410,11 @@
 
     if (!doc.types.length) deriveTypes(doc);
 
+    /* Files written before painting followed the list were drawn grouped by
+       type. Sort them that way once on load so they open looking exactly as
+       they did, and the list is authoritative from then on. */
+    if (raw.stacking !== 'list') normaliseStacking(doc);
+
     const anim = M.anim(doc);
     if (raw.animation && typeof raw.animation === 'object') {
       anim.speed = Math.max(0.5, num(raw.animation.speed, 6));
@@ -530,6 +536,19 @@
         return null;
     }
   };
+
+  const STACK_RANK = { zone: 0, wall: 1, machine: 2, route: 3, label: 4 };
+
+  function normaliseStacking(doc) {
+    doc.items = doc.items
+      .map((it, i) => ({ it: it, i: i }))
+      .sort((a, b) => {
+        const ra = STACK_RANK[a.it.type] === undefined ? 5 : STACK_RANK[a.it.type];
+        const rb = STACK_RANK[b.it.type] === undefined ? 5 : STACK_RANK[b.it.type];
+        return ra - rb || a.i - b.i;      /* stable within a type */
+      })
+      .map((e) => e.it);
+  }
 
   /* Files written before machine types existed only carry a `kind` string per
      machine. Rebuild a palette from what those machines actually look like so

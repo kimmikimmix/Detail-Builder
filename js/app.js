@@ -401,6 +401,28 @@
     app.refresh();
   };
 
+  /* Move the whole selection to the very top or bottom, keeping the order they
+     already have relative to each other. */
+  app.reorderExtreme = (toFront) => {
+    const ids = new Set(state.selection);
+    if (!ids.size) return;
+    const picked = state.doc.items.filter((it) => ids.has(it.id));
+    const rest = state.doc.items.filter((it) => !ids.has(it.id));
+    state.doc.items = toFront ? rest.concat(picked) : picked.concat(rest);
+    app.commit();
+    app.refresh();
+  };
+
+  app.moveItemExtreme = (id, toFront) => {
+    const items = state.doc.items;
+    const i = items.findIndex((it) => it.id === id);
+    if (i < 0) return;
+    const [it] = items.splice(i, 1);
+    if (toFront) items.push(it); else items.unshift(it);
+    app.commit();
+    app.refresh();
+  };
+
   app.moveItem = (id, dir) => {
     const items = state.doc.items;
     const i = items.findIndex((it) => it.id === id);
@@ -1220,6 +1242,8 @@
     if (e.key === 'p' || e.key === 'P') { app.toggleRun(); return; }
     if (e.key === '[') { app.reorder(-1); return; }
     if (e.key === ']') { app.reorder(1); return; }
+    if (e.key === '{') { app.reorderExtreme(false); return; }
+    if (e.key === '}') { app.reorderExtreme(true); return; }
     if (e.key === '?') { toggleHelp(true); return; }
     if (e.key === 'f' || e.key === 'F') { app.zoomFit(); return; }
     if (e.key === '+' || e.key === '=') { app.zoomBy(1.2); return; }

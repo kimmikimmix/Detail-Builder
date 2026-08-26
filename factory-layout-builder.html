@@ -666,8 +666,8 @@ body.focus .canvas-wrap { border-left: none; }
 .layer-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
+  gap: 3px;
+  padding: 4px 5px;
   border: 1px solid transparent;
   border-radius: 5px;
   cursor: pointer;
@@ -677,12 +677,12 @@ body.focus .canvas-wrap { border-left: none; }
 .layer-row:hover { background: var(--bg-3); color: var(--text); }
 .layer-row.sel { background: #24334a; border-color: var(--accent); color: var(--text); }
 .layer-row.off { opacity: .45; }
-.layer-dot { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.layer-dot { width: 9px; height: 9px; border-radius: 2px; flex: none; margin-right: 3px; }
 .layer-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer-kind { font-size: 10px; color: var(--text-dim2); flex: none; }
 .layer-btn {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   flex: none;
   display: grid;
   place-items: center;
@@ -1050,8 +1050,9 @@ body.focus .canvas-wrap { border-left: none; }
           <button class="btn" id="btnUnlockAll" title="Unlock everything">Unlock</button>
           <button class="btn" id="btnShowAll" title="Make every hidden item visible">Show all</button>
         </div>
-        <p class="note">Top of the list draws on top. Lock an item to stop it being
-          selected or dragged; hide it to take it off the canvas entirely.</p>
+        <p class="note">Top of the list draws on top. <b>⤒</b> and <b>⤓</b> jump an item
+          all the way to the front or back, <b>↑ ↓</b> move it one step. Lock an item to
+          stop it being selected or dragged; hide it to take it off the canvas entirely.</p>
       </div>
       <div class="panel grow layer-list" id="layerList"></div>
     </div>
@@ -1244,7 +1245,8 @@ body.focus .canvas-wrap { border-left: none; }
       <section>
         <h3>Layers</h3>
         <ul>
-          <li>The <b>Layers</b> tab lists everything, top of the stack first. Click a row to select it, or use ↑ ↓ to change what draws over what.</li>
+          <li>The <b>Layers</b> tab lists everything, top of the stack first. Click a row to select it. <b>⤒</b> brings it right to the front and <b>⤓</b> sends it right to the back; <b>↑ ↓</b> move it a single step.</li>
+          <li>The same four are in the Properties panel as <b>To front / Forward / Back / To back</b>, and work on a whole selection at once, keeping its internal order.</li>
           <li>The <b>padlock</b> stops an item being selected or dragged on the canvas — handy once the walls and zones are where you want them.</li>
           <li>The <b>eye</b> takes an item off the canvas entirely. <b>Show all</b> brings the hidden ones back.</li>
         </ul>
@@ -1287,7 +1289,7 @@ body.focus .canvas-wrap { border-left: none; }
           <li><kbd>Ctrl</kbd>+<kbd>A</kbd> Select all &middot; <kbd>Delete</kbd> Remove &middot; <kbd>Esc</kbd> Deselect</li>
           <li>Arrow keys nudge (hold <kbd>Shift</kbd> for 1 m steps)</li>
           <li><kbd>Shift</kbd>+click to add to the selection &middot; drag on empty space to marquee-select</li>
-                    <li><kbd>[</kbd> / <kbd>]</kbd> send backward / bring forward</li>
+                    <li><kbd>[</kbd> / <kbd>]</kbd> send backward / bring forward one step &middot; <kbd>{</kbd> / <kbd>}</kbd> send to back / bring to front</li>
         </ul>
       </section>
       <section>
@@ -1516,6 +1518,7 @@ window.FB = window.FB || {};
     grid: 1,
     unit: 'm',
     types: [],
+    stacking: 'list',    /* items paint in list order; see normaliseStacking */
     items: [],
     process: [],
     animation: { stops: [], speed: 6, loop: true, driver: null },
@@ -1899,6 +1902,11 @@ window.FB = window.FB || {};
 
     if (!doc.types.length) deriveTypes(doc);
 
+    /* Files written before painting followed the list were drawn grouped by
+       type. Sort them that way once on load so they open looking exactly as
+       they did, and the list is authoritative from then on. */
+    if (raw.stacking !== 'list') normaliseStacking(doc);
+
     const anim = M.anim(doc);
     if (raw.animation && typeof raw.animation === 'object') {
       anim.speed = Math.max(0.5, num(raw.animation.speed, 6));
@@ -2020,6 +2028,19 @@ window.FB = window.FB || {};
         return null;
     }
   };
+
+  const STACK_RANK = { zone: 0, wall: 1, machine: 2, route: 3, label: 4 };
+
+  function normaliseStacking(doc) {
+    doc.items = doc.items
+      .map((it, i) => ({ it: it, i: i }))
+      .sort((a, b) => {
+        const ra = STACK_RANK[a.it.type] === undefined ? 5 : STACK_RANK[a.it.type];
+        const rb = STACK_RANK[b.it.type] === undefined ? 5 : STACK_RANK[b.it.type];
+        return ra - rb || a.i - b.i;      /* stable within a type */
+      })
+      .map((e) => e.it);
+  }
 
   /* Files written before machine types existed only carry a `kind` string per
      machine. Rebuild a palette from what those machines actually look like so
@@ -2357,12 +2378,9 @@ window.FB = window.FB || {};
     const selected = state.selection;
     labelRects = [];
 
-    /* Painted in type order so machines sit above zones and under routes. */
-    for (const it of doc.items) if (it.type === 'zone') drawItem(ctx, state, it, view);
-    for (const it of doc.items) if (it.type === 'wall') drawItem(ctx, state, it, view);
-    for (const it of doc.items) if (it.type === 'machine') drawItem(ctx, state, it, view);
-    for (const it of doc.items) if (it.type === 'route') drawItem(ctx, state, it, view);
-    for (const it of doc.items) if (it.type === 'label') drawItem(ctx, state, it, view);
+    /* Painted in list order, so the Layers list is the truth about what covers
+       what and sending something to the top actually puts it there. */
+    for (const it of doc.items) drawItem(ctx, state, it, view);
 
     if (state.showSpecs) {
       for (const it of doc.items) if (it.type === 'machine' && !it.hidden) drawSpecs(ctx, state, it);
@@ -4803,11 +4821,16 @@ window.FB = window.FB || {};
   function commonActions(items) {
     const allLocked = items.every((it) => it.locked);
     return el('div', {}, [
+      el('div', { class: 'subhead', text: 'Stacking order' }),
+      el('div', { class: 'btnrow' }, [
+        button('To front', () => app.reorderExtreme(true), '', 'Put it above everything (})'),
+        button('Forward', () => app.reorder(1), '', 'Bring forward one step (])'),
+        button('Back', () => app.reorder(-1), '', 'Send backward one step ([)'),
+        button('To back', () => app.reorderExtreme(false), '', 'Put it behind everything ({)'),
+      ]),
       el('div', { class: 'subhead', text: 'Actions' }),
       el('div', { class: 'btnrow' }, [
         button('Duplicate', () => app.duplicate()),
-        button('Forward', () => app.reorder(1), '', 'Bring forward (])'),
-        button('Back', () => app.reorder(-1), '', 'Send backward ([)'),
         button(allLocked ? 'Unlock' : 'Lock', () => app.setLocked(items.map((i) => i.id), !allLocked), '',
           'A locked item cannot be selected or dragged on the canvas'),
         button('Delete', () => app.deleteSelection(), 'danger'),
@@ -5182,12 +5205,18 @@ window.FB = window.FB || {};
     });
     lock.addEventListener('click', (e) => { e.stopPropagation(); app.setLocked([it.id], !it.locked); });
 
-    const up = el('button', { class: 'layer-btn', text: '↑', title: 'Bring forward' });
+    const top = el('button', { class: 'layer-btn', text: '⤒', title: 'Bring to front' });
+    top.addEventListener('click', (e) => { e.stopPropagation(); app.moveItemExtreme(it.id, true); });
+    const up = el('button', { class: 'layer-btn', text: '↑', title: 'Bring forward one step' });
     up.addEventListener('click', (e) => { e.stopPropagation(); app.moveItem(it.id, 1); });
-    const down = el('button', { class: 'layer-btn', text: '↓', title: 'Send backward' });
+    const down = el('button', { class: 'layer-btn', text: '↓', title: 'Send backward one step' });
     down.addEventListener('click', (e) => { e.stopPropagation(); app.moveItem(it.id, -1); });
-    up.disabled = index === state.doc.items.length - 1;
-    down.disabled = index === 0;
+    const bottom = el('button', { class: 'layer-btn', text: '⤓', title: 'Send to back' });
+    bottom.addEventListener('click', (e) => { e.stopPropagation(); app.moveItemExtreme(it.id, false); });
+    const atTop = index === state.doc.items.length - 1;
+    const atBottom = index === 0;
+    top.disabled = atTop; up.disabled = atTop;
+    down.disabled = atBottom; bottom.disabled = atBottom;
 
     const row = el('div', {
       class: 'layer-row' + (state.selection.has(it.id) ? ' sel' : '') + (it.hidden ? ' off' : ''),
@@ -5196,7 +5225,7 @@ window.FB = window.FB || {};
       dot,
       el('span', { class: 'layer-name', text: itemName(state.doc, it) }),
       el('span', { class: 'layer-kind', text: TYPE_LABEL[it.type] || it.type }),
-      up, down, eye, lock,
+      top, up, down, bottom, eye, lock,
     ]);
     row.addEventListener('click', () => {
       if (it.locked || it.hidden) { app.toast(it.locked ? 'That layer is locked' : 'That layer is hidden'); return; }
@@ -5670,6 +5699,28 @@ window.FB = window.FB || {};
       it.hidden = hidden;
       if (hidden) state.selection.delete(id);
     }
+    app.commit();
+    app.refresh();
+  };
+
+  /* Move the whole selection to the very top or bottom, keeping the order they
+     already have relative to each other. */
+  app.reorderExtreme = (toFront) => {
+    const ids = new Set(state.selection);
+    if (!ids.size) return;
+    const picked = state.doc.items.filter((it) => ids.has(it.id));
+    const rest = state.doc.items.filter((it) => !ids.has(it.id));
+    state.doc.items = toFront ? rest.concat(picked) : picked.concat(rest);
+    app.commit();
+    app.refresh();
+  };
+
+  app.moveItemExtreme = (id, toFront) => {
+    const items = state.doc.items;
+    const i = items.findIndex((it) => it.id === id);
+    if (i < 0) return;
+    const [it] = items.splice(i, 1);
+    if (toFront) items.push(it); else items.unshift(it);
     app.commit();
     app.refresh();
   };
@@ -6493,6 +6544,8 @@ window.FB = window.FB || {};
     if (e.key === 'p' || e.key === 'P') { app.toggleRun(); return; }
     if (e.key === '[') { app.reorder(-1); return; }
     if (e.key === ']') { app.reorder(1); return; }
+    if (e.key === '{') { app.reorderExtreme(false); return; }
+    if (e.key === '}') { app.reorderExtreme(true); return; }
     if (e.key === '?') { toggleHelp(true); return; }
     if (e.key === 'f' || e.key === 'F') { app.zoomFit(); return; }
     if (e.key === '+' || e.key === '=') { app.zoomBy(1.2); return; }

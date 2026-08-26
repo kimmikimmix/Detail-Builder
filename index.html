@@ -233,8 +233,9 @@
           <button class="btn" id="btnUnlockAll" title="Unlock everything">Unlock</button>
           <button class="btn" id="btnShowAll" title="Make every hidden item visible">Show all</button>
         </div>
-        <p class="note">Top of the list draws on top. Lock an item to stop it being
-          selected or dragged; hide it to take it off the canvas entirely.</p>
+        <p class="note">Top of the list draws on top. <b>⤒</b> and <b>⤓</b> jump an item
+          all the way to the front or back, <b>↑ ↓</b> move it one step. Lock an item to
+          stop it being selected or dragged; hide it to take it off the canvas entirely.</p>
       </div>
       <div class="panel grow layer-list" id="layerList"></div>
     </div>
@@ -427,7 +428,8 @@
       <section>
         <h3>Layers</h3>
         <ul>
-          <li>The <b>Layers</b> tab lists everything, top of the stack first. Click a row to select it, or use ↑ ↓ to change what draws over what.</li>
+          <li>The <b>Layers</b> tab lists everything, top of the stack first. Click a row to select it. <b>⤒</b> brings it right to the front and <b>⤓</b> sends it right to the back; <b>↑ ↓</b> move it a single step.</li>
+          <li>The same four are in the Properties panel as <b>To front / Forward / Back / To back</b>, and work on a whole selection at once, keeping its internal order.</li>
           <li>The <b>padlock</b> stops an item being selected or dragged on the canvas — handy once the walls and zones are where you want them.</li>
           <li>The <b>eye</b> takes an item off the canvas entirely. <b>Show all</b> brings the hidden ones back.</li>
         </ul>
@@ -470,7 +472,7 @@
           <li><kbd>Ctrl</kbd>+<kbd>A</kbd> Select all &middot; <kbd>Delete</kbd> Remove &middot; <kbd>Esc</kbd> Deselect</li>
           <li>Arrow keys nudge (hold <kbd>Shift</kbd> for 1 m steps)</li>
           <li><kbd>Shift</kbd>+click to add to the selection &middot; drag on empty space to marquee-select</li>
-                    <li><kbd>[</kbd> / <kbd>]</kbd> send backward / bring forward</li>
+                    <li><kbd>[</kbd> / <kbd>]</kbd> send backward / bring forward one step &middot; <kbd>{</kbd> / <kbd>}</kbd> send to back / bring to front</li>
         </ul>
       </section>
       <section>
