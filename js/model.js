@@ -26,29 +26,34 @@
     grid: 1,
     unit: 'm',
     types: [],
+    stacking: 'list',    /* items paint in list order; see normaliseStacking */
     items: [],
     process: [],
-    animation: { stops: [], speed: 6, loop: true },
+    animation: { stops: [], speed: 6, loop: true, driver: null },
   });
 
-  /* One stop on the animated run: an item to visit and how long work takes
-     there, in seconds. */
+  /* One stop on the animated run: either an item to visit or a loose point on
+     a hand-drawn path, plus how long work takes there, in seconds. */
   M.stop = (itemId, dwell) => ({ item: itemId, dwell: dwell === undefined ? 1 : Math.max(0, dwell) });
+  M.stopAt = (x, y, dwell) => ({ x: x, y: y, dwell: dwell === undefined ? 0 : Math.max(0, dwell) });
 
   M.anim = (doc) => {
-    if (!doc.animation || typeof doc.animation !== 'object') doc.animation = { stops: [], speed: 6, loop: true };
+    if (!doc.animation || typeof doc.animation !== 'object') {
+      doc.animation = { stops: [], speed: 6, loop: true, driver: null };
+    }
     if (!Array.isArray(doc.animation.stops)) doc.animation.stops = [];
     return doc.animation;
   };
 
   /* ---------- machine types ---------- */
 
-  M.type = (name, w, h, color) => ({
+  M.type = (name, w, h, color, vehicle) => ({
     id: M.uid(),
     name: name || 'New machine',
     w: Math.max(0.2, Number(w) || 2),
     h: Math.max(0.2, Number(h) || 2),
     color: color || M.DEFAULT_TYPE_COLORS[0],
+    vehicle: !!vehicle,      /* EVs, AGVs, forklifts — things that drive */
   });
 
   M.types = (doc) => {
@@ -98,6 +103,7 @@
     clearance: 0,
     notes: '',
     params: [],          /* [{ k: 'Wash pressure', v: '120 bar' }] */
+    vehicle: !!(type && type.vehicle),
     locked: false,
     hidden: false,
   });
@@ -384,7 +390,7 @@
     if (Array.isArray(raw.types)) {
       for (const t of raw.types) {
         if (!t || typeof t !== 'object') continue;
-        const type = M.type(str(t.name, 'Machine'), num(t.w, 2), num(t.h, 2), str(t.color, M.DEFAULT_TYPE_COLORS[0]));
+        const type = M.type(str(t.name, 'Machine'), num(t.w, 2), num(t.h, 2), str(t.color, M.DEFAULT_TYPE_COLORS[0]), t.vehicle);
         if (typeof t.id === 'string' && t.id) type.id = t.id;
         doc.types.push(type);
       }
@@ -404,14 +410,26 @@
 
     if (!doc.types.length) deriveTypes(doc);
 
+    /* Files written before painting followed the list were drawn grouped by
+       type. Sort them that way once on load so they open looking exactly as
+       they did, and the list is authoritative from then on. */
+    if (raw.stacking !== 'list') normaliseStacking(doc);
+
     const anim = M.anim(doc);
     if (raw.animation && typeof raw.animation === 'object') {
       anim.speed = Math.max(0.5, num(raw.animation.speed, 6));
       anim.loop = raw.animation.loop !== false;
+      if (typeof raw.animation.driver === 'string' && seen.has(raw.animation.driver)) {
+        anim.driver = raw.animation.driver;
+      }
       if (Array.isArray(raw.animation.stops)) {
         for (const st of raw.animation.stops) {
-          if (!st || typeof st !== 'object' || !seen.has(st.item)) continue;
-          anim.stops.push(M.stop(st.item, num(st.dwell, 1)));
+          if (!st || typeof st !== 'object') continue;
+          if (typeof st.item === 'string') {
+            if (seen.has(st.item)) anim.stops.push(M.stop(st.item, num(st.dwell, 1)));
+          } else if (Number.isFinite(Number(st.x)) && Number.isFinite(Number(st.y))) {
+            anim.stops.push(M.stopAt(Number(st.x), Number(st.y), num(st.dwell, 0)));
+          }
         }
       }
     }
@@ -457,6 +475,7 @@
         base.color = str(it.color, base.color);
         base.clearance = Math.max(0, num(it.clearance, 0));
         base.notes = str(it.notes, '');
+        base.vehicle = !!it.vehicle;
         base.params = Array.isArray(it.params)
           ? it.params.filter((p) => p && typeof p === 'object')
               .map((p) => M.param(str(p.k, ''), str(p.v, '')))
@@ -518,6 +537,19 @@
     }
   };
 
+  const STACK_RANK = { zone: 0, wall: 1, machine: 2, route: 3, label: 4 };
+
+  function normaliseStacking(doc) {
+    doc.items = doc.items
+      .map((it, i) => ({ it: it, i: i }))
+      .sort((a, b) => {
+        const ra = STACK_RANK[a.it.type] === undefined ? 5 : STACK_RANK[a.it.type];
+        const rb = STACK_RANK[b.it.type] === undefined ? 5 : STACK_RANK[b.it.type];
+        return ra - rb || a.i - b.i;      /* stable within a type */
+      })
+      .map((e) => e.it);
+  }
+
   /* Files written before machine types existed only carry a `kind` string per
      machine. Rebuild a palette from what those machines actually look like so
      nothing is lost on load. */
@@ -549,25 +581,40 @@
   /* The full journey as a list of legs. Each leg is the polyline from one stop
      to the next: the route between them when there is one, else a straight
      line, so an unrouted pair still animates. */
+  M.stopPos = (doc, st) => {
+    if (st.item) {
+      const item = M.byId(doc, st.item);
+      if (!item) return null;
+      return M.isRect(item) ? G.rectCenter(item) : { x: item.x, y: item.y };
+    }
+    return { x: st.x, y: st.y };
+  };
+
   M.animPath = (doc) => {
     const anim = M.anim(doc);
     const legs = [];
-    const stops = anim.stops.map((st) => ({ st, item: M.byId(doc, st.item) })).filter((s) => s.item);
+    const stops = [];
+    for (const st of anim.stops) {
+      const pos = M.stopPos(doc, st);
+      if (!pos) continue;                       /* the item it pointed at is gone */
+      stops.push({ st, item: st.item ? M.byId(doc, st.item) : null, pos: pos });
+    }
 
     for (let i = 0; i < stops.length - 1; i++) {
-      const a = stops[i].item, b = stops[i + 1].item;
-      const route = doc.items.find((it) => it.type === 'route' && !it.hidden &&
-        ((it.from.item === a.id && it.to.item === b.id) || (it.from.item === b.id && it.to.item === a.id)));
+      const a = stops[i], b = stops[i + 1];
+      /* Two machines with a route between them travel along it; anything else,
+         including hand-drawn points, goes straight. */
+      const route = a.item && b.item && doc.items.find((it) => it.type === 'route' && !it.hidden &&
+        ((it.from.item === a.item.id && it.to.item === b.item.id) ||
+         (it.from.item === b.item.id && it.to.item === a.item.id)));
 
       let pts;
       if (route) {
         pts = M.routePath(doc, route);
         /* Walk the route the way this leg travels. */
-        if (route.from.item === b.id) pts = pts.slice().reverse();
+        if (route.from.item === b.item.id) pts = pts.slice().reverse();
       } else {
-        const ca = G.rectCenter(M.isRect(a) ? a : { x: a.x, y: a.y, w: 0, h: 0 });
-        const cb = G.rectCenter(M.isRect(b) ? b : { x: b.x, y: b.y, w: 0, h: 0 });
-        pts = [ca, cb];
+        pts = [a.pos, b.pos];
       }
       if (pts.length > 1) legs.push({ pts, length: G.polylineLength(pts), viaRoute: !!route });
     }
@@ -596,9 +643,15 @@
       const dwell = stop.st.dwell;
 
       if (t <= cursor + dwell) {
-        const at = M.isRect(stop.item) ? G.rectCenter(stop.item) : { x: stop.item.x, y: stop.item.y };
+        /* Face the way the next leg leaves, so a vehicle sits parked correctly. */
+        const leg = path.legs[i] || path.legs[i - 1];
+        let angle = 0;
+        if (leg) {
+          const a = leg.pts[0], b = leg.pts[1];
+          angle = Math.atan2(b.y - a.y, b.x - a.x);
+        }
         return {
-          x: at.x, y: at.y, angle: 0,
+          x: stop.pos.x, y: stop.pos.y, angle: angle,
           stop: stop.item, index: i, working: dwell > 0,
           progress: dwell > 0 ? (t - cursor) / dwell : 1,
         };
@@ -617,9 +670,10 @@
     }
 
     const last = path.stops[path.stops.length - 1];
-    const at = M.isRect(last.item) ? G.rectCenter(last.item) : { x: last.item.x, y: last.item.y };
-    return { x: at.x, y: at.y, angle: 0, stop: last.item, index: path.stops.length - 1, working: false, progress: 1 };
+    return { x: last.pos.x, y: last.pos.y, angle: 0, stop: last.item, index: path.stops.length - 1, working: false, progress: 1 };
   };
+
+  M.vehicles = (doc) => doc.items.filter((it) => it.type === 'machine' && it.vehicle);
 
   /* Follow the routes out of a machine to propose a run order. */
   M.buildRunFromRoutes = (doc) => {

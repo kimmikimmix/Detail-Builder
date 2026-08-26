@@ -13,8 +13,10 @@
   --line:      #2c3444;
   --line-2:    #3a4459;
   --text:      #e6ebf2;
-  --text-dim:  #98a3b5;
-  --text-dim2: #6b7688;
+  --text-dim:  #a2adbe;
+  /* Both dim tones clear 4.5:1 on every panel background — the old dim2 sat
+     at 3.3:1 and small notes were barely legible. */
+  --text-dim2: #8792a5;
   --accent:    #4f9cf9;
   --accent-2:  #2b7de0;
   --danger:    #ef5350;
@@ -664,8 +666,8 @@ body.focus .canvas-wrap { border-left: none; }
 .layer-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
+  gap: 3px;
+  padding: 4px 5px;
   border: 1px solid transparent;
   border-radius: 5px;
   cursor: pointer;
@@ -675,12 +677,12 @@ body.focus .canvas-wrap { border-left: none; }
 .layer-row:hover { background: var(--bg-3); color: var(--text); }
 .layer-row.sel { background: #24334a; border-color: var(--accent); color: var(--text); }
 .layer-row.off { opacity: .45; }
-.layer-dot { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.layer-dot { width: 9px; height: 9px; border-radius: 2px; flex: none; margin-right: 3px; }
 .layer-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer-kind { font-size: 10px; color: var(--text-dim2); flex: none; }
 .layer-btn {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   flex: none;
   display: grid;
   place-items: center;
@@ -777,8 +779,8 @@ body.focus .canvas-wrap { border-left: none; }
   .print-meta { font-size: 10px; color: #566072; }
 
   .print-figure { text-align: center; }
-  .print-figure img { max-width: 100%; max-height: 165mm; object-fit: contain; }
-  body.print-portrait .print-figure img { max-height: 235mm; }
+  /* max-width / max-height are set from the chosen paper size. */
+  .print-figure img { max-width: 100%; object-fit: contain; }
 
   .print-tables { margin-top: 10px; }
   .print-tables:empty { display: none; }
@@ -905,6 +907,9 @@ body.focus .canvas-wrap { border-left: none; }
         </button>
         <button class="tool" data-tool="measure" title="Measure distance (K)">
           <svg viewBox="0 0 24 24"><path d="M3 14 14 3l7 7L10 21z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="m7 10 2 2m2-4 2 2m2-4 2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Measure</span>
+        </button>
+        <button class="tool" data-tool="runpath" title="Draw the run path (G)">
+          <svg viewBox="0 0 24 24"><path d="M4 19c5 0 3-7 8-7s3-7 8-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="4" cy="19" r="2" fill="currentColor"/><circle cx="20" cy="5" r="2" fill="currentColor"/></svg><span>Path</span>
         </button>
         <button class="tool" data-tool="pan" title="Pan (H, or hold Space / middle mouse)">
           <svg viewBox="0 0 24 24"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V12m0-1a1.5 1.5 0 0 1 3 0v4a6 6 0 0 1-6 6h-1.2a5 5 0 0 1-3.9-1.9L6 17.5 9 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Pan</span>
@@ -1045,8 +1050,9 @@ body.focus .canvas-wrap { border-left: none; }
           <button class="btn" id="btnUnlockAll" title="Unlock everything">Unlock</button>
           <button class="btn" id="btnShowAll" title="Make every hidden item visible">Show all</button>
         </div>
-        <p class="note">Top of the list draws on top. Lock an item to stop it being
-          selected or dragged; hide it to take it off the canvas entirely.</p>
+        <p class="note">Top of the list draws on top. <b>⤒</b> and <b>⤓</b> jump an item
+          all the way to the front or back, <b>↑ ↓</b> move it one step. Lock an item to
+          stop it being selected or dragged; hide it to take it off the canvas entirely.</p>
       </div>
       <div class="panel grow layer-list" id="layerList"></div>
     </div>
@@ -1068,12 +1074,19 @@ body.focus .canvas-wrap { border-left: none; }
           <span class="rangeval" id="runSpeedVal">6 m/s</span>
         </div>
         <label class="check"><input type="checkbox" id="runLoop" checked> Loop the run</label>
+        <div class="row">
+          <label>Driven by</label>
+          <select id="runDriver" title="Which vehicle rides the path"></select>
+        </div>
         <div class="btnrow">
+          <button class="btn primary" id="btnDrawPath" title="Click your own path on the canvas">Draw path</button>
           <button class="btn" id="btnBuildRun" title="Follow the routes to work out the order">Build from routes</button>
           <button class="btn" id="btnAddStop" title="Append the selected machine">Add selected</button>
         </div>
-        <p class="note">The run visits each stop in order, pausing for its work time and
-          travelling along the route between stops when there is one.</p>
+        <p class="note"><b>Draw path</b> lets you click the exact route: machines to visit,
+          empty space for a corner. Otherwise the run travels along the routes you drew
+          between stops, and straight where there are none. Drag a hand-placed point on
+          the canvas to nudge it.</p>
       </div>
       <div class="panel grow stop-list" id="stopList"></div>
     </div>
@@ -1101,6 +1114,15 @@ body.focus .canvas-wrap { border-left: none; }
           <label class="check"><input type="checkbox" id="printSummary"> Summary tables on a second page</label>
 
           <div class="subhead">Paper</div>
+          <div class="row">
+            <label>Size</label>
+            <select id="printPaper">
+              <option value="a4">A4 — 210 × 297 mm</option>
+              <option value="a3">A3 — 297 × 420 mm</option>
+              <option value="letter">Letter — 8.5 × 11 in</option>
+              <option value="ledger">Ledger — 11 × 17 in</option>
+            </select>
+          </div>
           <div class="row">
             <label>Orientation</label>
             <select id="printOrient">
@@ -1154,6 +1176,7 @@ body.focus .canvas-wrap { border-left: none; }
           <label>Colour</label>
           <input type="color" id="typeColor">
         </div>
+        <label class="check"><input type="checkbox" id="typeVehicle"> This is a vehicle — an EV, AGV or forklift that can drive the run</label>
         <label class="check hidden" id="typeApplyRow">
           <input type="checkbox" id="typeApply"> Apply the colour and size to the
           <span id="typeUseCount">0</span> machines already using this type
@@ -1179,7 +1202,7 @@ body.focus .canvas-wrap { border-left: none; }
       <section>
         <h3>Tools</h3>
         <ul>
-          <li><kbd>V</kbd> Select &middot; <kbd>M</kbd> Machine &middot; <kbd>W</kbd> Wall &middot; <kbd>R</kbd> Room &middot; <kbd>E</kbd> Route &middot; <kbd>Z</kbd> Zone &middot; <kbd>T</kbd> Text &middot; <kbd>K</kbd> Measure &middot; <kbd>H</kbd> Pan</li>
+          <li><kbd>V</kbd> Select &middot; <kbd>M</kbd> Machine &middot; <kbd>W</kbd> Wall &middot; <kbd>R</kbd> Room &middot; <kbd>E</kbd> Route &middot; <kbd>Z</kbd> Zone &middot; <kbd>T</kbd> Text &middot; <kbd>K</kbd> Measure &middot; <kbd>G</kbd> Run path &middot; <kbd>H</kbd> Pan</li>
         </ul>
       </section>
       <section>
@@ -1222,7 +1245,8 @@ body.focus .canvas-wrap { border-left: none; }
       <section>
         <h3>Layers</h3>
         <ul>
-          <li>The <b>Layers</b> tab lists everything, top of the stack first. Click a row to select it, or use ↑ ↓ to change what draws over what.</li>
+          <li>The <b>Layers</b> tab lists everything, top of the stack first. Click a row to select it. <b>⤒</b> brings it right to the front and <b>⤓</b> sends it right to the back; <b>↑ ↓</b> move it a single step.</li>
+          <li>The same four are in the Properties panel as <b>To front / Forward / Back / To back</b>, and work on a whole selection at once, keeping its internal order.</li>
           <li>The <b>padlock</b> stops an item being selected or dragged on the canvas — handy once the walls and zones are where you want them.</li>
           <li>The <b>eye</b> takes an item off the canvas entirely. <b>Show all</b> brings the hidden ones back.</li>
         </ul>
@@ -1230,7 +1254,9 @@ body.focus .canvas-wrap { border-left: none; }
       <section>
         <h3>Animated run</h3>
         <ul>
-          <li>The <b>Run</b> tab animates a part through the plant. <b>Build from routes</b> follows your arrows to work out the order, or select a machine and <b>Add selected</b>.</li>
+          <li>The <b>Run</b> tab animates a part through the plant. <b>Draw path</b> (<kbd>G</kbd>) lets you click the exact route — machines to visit, empty space for a corner — and <b>Build from routes</b> follows your arrows instead. <b>Add selected</b> appends a machine.</li>
+          <li>Drag a hand-placed point on the canvas to nudge the path while the Run tab is open.</li>
+          <li><b>Driven by</b> puts one of your vehicles on the path. Mark a machine type — or a single machine — as a <b>vehicle</b> and it becomes an EV, AGV or forklift: drawn with a dashed outline and a nose chevron, and it drives the path facing the way it travels. It stays parked until you press play, and <b>Restart</b> brings it home.</li>
           <li>Reorder stops with ↑ ↓, drop one with ✕, and set the seconds of work at each stop. Between stops the token travels the route you drew, or a straight line where there isn't one.</li>
           <li><kbd>P</kbd> plays and pauses; drag the scrubber to move through the run; <b>Speed</b> is the travel speed in metres per second.</li>
         </ul>
@@ -1241,7 +1267,9 @@ body.focus .canvas-wrap { border-left: none; }
           <li><b>Print</b> (or <kbd>Ctrl</kbd>+<kbd>P</kbd>) prints the drawing on its own — no toolbars, no side panels.</li>
           <li>Tick <b>Machine details</b> and <b>Zone process &amp; times</b> to include them, independently of what is showing on screen. <b>Names</b> and <b>Grid</b> are separate switches.</li>
           <li><b>Summary tables</b> adds a second page listing every zone with its process and time (and a total), plus every machine's settings.</li>
+          <li>Pick the <b>paper size</b> — A4, A3, Letter or Ledger — and the orientation. Bigger paper means a bigger scale, so more fits inside the boxes.</li>
           <li>The drawing is scaled to the paper, so labels and detail cards come out the same readable size whatever the plant measures — the preview shows exactly what you will get, and the note gives the scale.</li>
+          <li>A machine too small to hold its name gets the name in a chip just outside the box instead of a truncated one, and names that would collide are dropped rather than drawn over each other.</li>
           <li>Choose “Save as PDF” in your browser's print dialog to get a file instead.</li>
         </ul>
       </section>
@@ -1261,7 +1289,7 @@ body.focus .canvas-wrap { border-left: none; }
           <li><kbd>Ctrl</kbd>+<kbd>A</kbd> Select all &middot; <kbd>Delete</kbd> Remove &middot; <kbd>Esc</kbd> Deselect</li>
           <li>Arrow keys nudge (hold <kbd>Shift</kbd> for 1 m steps)</li>
           <li><kbd>Shift</kbd>+click to add to the selection &middot; drag on empty space to marquee-select</li>
-                    <li><kbd>[</kbd> / <kbd>]</kbd> send backward / bring forward</li>
+                    <li><kbd>[</kbd> / <kbd>]</kbd> send backward / bring forward one step &middot; <kbd>{</kbd> / <kbd>}</kbd> send to back / bring to front</li>
         </ul>
       </section>
       <section>
@@ -1490,29 +1518,34 @@ window.FB = window.FB || {};
     grid: 1,
     unit: 'm',
     types: [],
+    stacking: 'list',    /* items paint in list order; see normaliseStacking */
     items: [],
     process: [],
-    animation: { stops: [], speed: 6, loop: true },
+    animation: { stops: [], speed: 6, loop: true, driver: null },
   });
 
-  /* One stop on the animated run: an item to visit and how long work takes
-     there, in seconds. */
+  /* One stop on the animated run: either an item to visit or a loose point on
+     a hand-drawn path, plus how long work takes there, in seconds. */
   M.stop = (itemId, dwell) => ({ item: itemId, dwell: dwell === undefined ? 1 : Math.max(0, dwell) });
+  M.stopAt = (x, y, dwell) => ({ x: x, y: y, dwell: dwell === undefined ? 0 : Math.max(0, dwell) });
 
   M.anim = (doc) => {
-    if (!doc.animation || typeof doc.animation !== 'object') doc.animation = { stops: [], speed: 6, loop: true };
+    if (!doc.animation || typeof doc.animation !== 'object') {
+      doc.animation = { stops: [], speed: 6, loop: true, driver: null };
+    }
     if (!Array.isArray(doc.animation.stops)) doc.animation.stops = [];
     return doc.animation;
   };
 
   /* ---------- machine types ---------- */
 
-  M.type = (name, w, h, color) => ({
+  M.type = (name, w, h, color, vehicle) => ({
     id: M.uid(),
     name: name || 'New machine',
     w: Math.max(0.2, Number(w) || 2),
     h: Math.max(0.2, Number(h) || 2),
     color: color || M.DEFAULT_TYPE_COLORS[0],
+    vehicle: !!vehicle,      /* EVs, AGVs, forklifts — things that drive */
   });
 
   M.types = (doc) => {
@@ -1562,6 +1595,7 @@ window.FB = window.FB || {};
     clearance: 0,
     notes: '',
     params: [],          /* [{ k: 'Wash pressure', v: '120 bar' }] */
+    vehicle: !!(type && type.vehicle),
     locked: false,
     hidden: false,
   });
@@ -1848,7 +1882,7 @@ window.FB = window.FB || {};
     if (Array.isArray(raw.types)) {
       for (const t of raw.types) {
         if (!t || typeof t !== 'object') continue;
-        const type = M.type(str(t.name, 'Machine'), num(t.w, 2), num(t.h, 2), str(t.color, M.DEFAULT_TYPE_COLORS[0]));
+        const type = M.type(str(t.name, 'Machine'), num(t.w, 2), num(t.h, 2), str(t.color, M.DEFAULT_TYPE_COLORS[0]), t.vehicle);
         if (typeof t.id === 'string' && t.id) type.id = t.id;
         doc.types.push(type);
       }
@@ -1868,14 +1902,26 @@ window.FB = window.FB || {};
 
     if (!doc.types.length) deriveTypes(doc);
 
+    /* Files written before painting followed the list were drawn grouped by
+       type. Sort them that way once on load so they open looking exactly as
+       they did, and the list is authoritative from then on. */
+    if (raw.stacking !== 'list') normaliseStacking(doc);
+
     const anim = M.anim(doc);
     if (raw.animation && typeof raw.animation === 'object') {
       anim.speed = Math.max(0.5, num(raw.animation.speed, 6));
       anim.loop = raw.animation.loop !== false;
+      if (typeof raw.animation.driver === 'string' && seen.has(raw.animation.driver)) {
+        anim.driver = raw.animation.driver;
+      }
       if (Array.isArray(raw.animation.stops)) {
         for (const st of raw.animation.stops) {
-          if (!st || typeof st !== 'object' || !seen.has(st.item)) continue;
-          anim.stops.push(M.stop(st.item, num(st.dwell, 1)));
+          if (!st || typeof st !== 'object') continue;
+          if (typeof st.item === 'string') {
+            if (seen.has(st.item)) anim.stops.push(M.stop(st.item, num(st.dwell, 1)));
+          } else if (Number.isFinite(Number(st.x)) && Number.isFinite(Number(st.y))) {
+            anim.stops.push(M.stopAt(Number(st.x), Number(st.y), num(st.dwell, 0)));
+          }
         }
       }
     }
@@ -1921,6 +1967,7 @@ window.FB = window.FB || {};
         base.color = str(it.color, base.color);
         base.clearance = Math.max(0, num(it.clearance, 0));
         base.notes = str(it.notes, '');
+        base.vehicle = !!it.vehicle;
         base.params = Array.isArray(it.params)
           ? it.params.filter((p) => p && typeof p === 'object')
               .map((p) => M.param(str(p.k, ''), str(p.v, '')))
@@ -1982,6 +2029,19 @@ window.FB = window.FB || {};
     }
   };
 
+  const STACK_RANK = { zone: 0, wall: 1, machine: 2, route: 3, label: 4 };
+
+  function normaliseStacking(doc) {
+    doc.items = doc.items
+      .map((it, i) => ({ it: it, i: i }))
+      .sort((a, b) => {
+        const ra = STACK_RANK[a.it.type] === undefined ? 5 : STACK_RANK[a.it.type];
+        const rb = STACK_RANK[b.it.type] === undefined ? 5 : STACK_RANK[b.it.type];
+        return ra - rb || a.i - b.i;      /* stable within a type */
+      })
+      .map((e) => e.it);
+  }
+
   /* Files written before machine types existed only carry a `kind` string per
      machine. Rebuild a palette from what those machines actually look like so
      nothing is lost on load. */
@@ -2013,25 +2073,40 @@ window.FB = window.FB || {};
   /* The full journey as a list of legs. Each leg is the polyline from one stop
      to the next: the route between them when there is one, else a straight
      line, so an unrouted pair still animates. */
+  M.stopPos = (doc, st) => {
+    if (st.item) {
+      const item = M.byId(doc, st.item);
+      if (!item) return null;
+      return M.isRect(item) ? G.rectCenter(item) : { x: item.x, y: item.y };
+    }
+    return { x: st.x, y: st.y };
+  };
+
   M.animPath = (doc) => {
     const anim = M.anim(doc);
     const legs = [];
-    const stops = anim.stops.map((st) => ({ st, item: M.byId(doc, st.item) })).filter((s) => s.item);
+    const stops = [];
+    for (const st of anim.stops) {
+      const pos = M.stopPos(doc, st);
+      if (!pos) continue;                       /* the item it pointed at is gone */
+      stops.push({ st, item: st.item ? M.byId(doc, st.item) : null, pos: pos });
+    }
 
     for (let i = 0; i < stops.length - 1; i++) {
-      const a = stops[i].item, b = stops[i + 1].item;
-      const route = doc.items.find((it) => it.type === 'route' && !it.hidden &&
-        ((it.from.item === a.id && it.to.item === b.id) || (it.from.item === b.id && it.to.item === a.id)));
+      const a = stops[i], b = stops[i + 1];
+      /* Two machines with a route between them travel along it; anything else,
+         including hand-drawn points, goes straight. */
+      const route = a.item && b.item && doc.items.find((it) => it.type === 'route' && !it.hidden &&
+        ((it.from.item === a.item.id && it.to.item === b.item.id) ||
+         (it.from.item === b.item.id && it.to.item === a.item.id)));
 
       let pts;
       if (route) {
         pts = M.routePath(doc, route);
         /* Walk the route the way this leg travels. */
-        if (route.from.item === b.id) pts = pts.slice().reverse();
+        if (route.from.item === b.item.id) pts = pts.slice().reverse();
       } else {
-        const ca = G.rectCenter(M.isRect(a) ? a : { x: a.x, y: a.y, w: 0, h: 0 });
-        const cb = G.rectCenter(M.isRect(b) ? b : { x: b.x, y: b.y, w: 0, h: 0 });
-        pts = [ca, cb];
+        pts = [a.pos, b.pos];
       }
       if (pts.length > 1) legs.push({ pts, length: G.polylineLength(pts), viaRoute: !!route });
     }
@@ -2060,9 +2135,15 @@ window.FB = window.FB || {};
       const dwell = stop.st.dwell;
 
       if (t <= cursor + dwell) {
-        const at = M.isRect(stop.item) ? G.rectCenter(stop.item) : { x: stop.item.x, y: stop.item.y };
+        /* Face the way the next leg leaves, so a vehicle sits parked correctly. */
+        const leg = path.legs[i] || path.legs[i - 1];
+        let angle = 0;
+        if (leg) {
+          const a = leg.pts[0], b = leg.pts[1];
+          angle = Math.atan2(b.y - a.y, b.x - a.x);
+        }
         return {
-          x: at.x, y: at.y, angle: 0,
+          x: stop.pos.x, y: stop.pos.y, angle: angle,
           stop: stop.item, index: i, working: dwell > 0,
           progress: dwell > 0 ? (t - cursor) / dwell : 1,
         };
@@ -2081,9 +2162,10 @@ window.FB = window.FB || {};
     }
 
     const last = path.stops[path.stops.length - 1];
-    const at = M.isRect(last.item) ? G.rectCenter(last.item) : { x: last.item.x, y: last.item.y };
-    return { x: at.x, y: at.y, angle: 0, stop: last.item, index: path.stops.length - 1, working: false, progress: 1 };
+    return { x: last.pos.x, y: last.pos.y, angle: 0, stop: last.item, index: path.stops.length - 1, working: false, progress: 1 };
   };
+
+  M.vehicles = (doc) => doc.items.filter((it) => it.type === 'machine' && it.vehicle);
 
   /* Follow the routes out of a machine to propose a run order. */
   M.buildRunFromRoutes = (doc) => {
@@ -2294,13 +2376,11 @@ window.FB = window.FB || {};
 
     const view = G.padAABB(R.viewBounds(cam), 4);
     const selected = state.selection;
+    labelRects = [];
 
-    /* Painted in type order so machines sit above zones and under routes. */
-    for (const it of doc.items) if (it.type === 'zone') drawItem(ctx, state, it, view);
-    for (const it of doc.items) if (it.type === 'wall') drawItem(ctx, state, it, view);
-    for (const it of doc.items) if (it.type === 'machine') drawItem(ctx, state, it, view);
-    for (const it of doc.items) if (it.type === 'route') drawItem(ctx, state, it, view);
-    for (const it of doc.items) if (it.type === 'label') drawItem(ctx, state, it, view);
+    /* Painted in list order, so the Layers list is the truth about what covers
+       what and sending something to the top actually puts it there. */
+    for (const it of doc.items) drawItem(ctx, state, it, view);
 
     if (state.showSpecs) {
       for (const it of doc.items) if (it.type === 'machine' && !it.hidden) drawSpecs(ctx, state, it);
@@ -2382,8 +2462,34 @@ window.FB = window.FB || {};
 
   /* ---------- items ---------- */
 
+  /* The vehicle assigned to the run rides it instead of sitting where it was
+     parked — drawn transformed, so the document is never touched. */
+  function driverPose(state, m) {
+    const play = state.play;
+    if (!play || !play.at || !play.driverId || play.driverId !== m.id) return null;
+    /* Parked until the run actually starts, so the layout reads normally and
+       Restart brings the vehicle home. */
+    if (!play.running && play.t <= 0) return null;
+    return play.at;
+  }
+  R.driverPose = driverPose;
+
   function drawItem(ctx, state, it, view) {
     if (it.hidden) return;
+
+    const pose = it.type === 'machine' ? driverPose(state, it) : null;
+    if (pose) {
+      const c = G.rectCenter(it);
+      const riding = Object.assign({}, it, { rot: 0 });
+      ctx.save();
+      ctx.translate(pose.x, pose.y);
+      ctx.rotate(pose.angle || 0);
+      ctx.translate(-c.x, -c.y);
+      drawMachine(ctx, state, riding);
+      ctx.restore();
+      return;
+    }
+
     const b = M.bounds(state.doc, it);
     if (b && !G.aabbOverlap(b, view)) return;
     switch (it.type) {
@@ -2434,46 +2540,76 @@ window.FB = window.FB || {};
         ctx.restore();
       }
 
-      roundRect(ctx, m.x, m.y, m.w, m.h, Math.min(0.18, m.w / 6, m.h / 6));
+      const radius = m.vehicle
+        ? Math.min(m.w, m.h) / 3
+        : Math.min(0.18, m.w / 6, m.h / 6);
+      roundRect(ctx, m.x, m.y, m.w, m.h, radius);
       ctx.fillStyle = hexA(m.color, 0.24);
       ctx.fill();
       ctx.lineWidth = 2 / zoom;
       ctx.strokeStyle = m.color;
+      if (m.vehicle) ctx.setLineDash([0.35, 0.22]);
       ctx.stroke();
+      ctx.setLineDash([]);
 
-      /* Corner tick so orientation is readable once rotated. */
-      ctx.beginPath();
-      ctx.moveTo(m.x, m.y + Math.min(0.5, m.h / 3));
-      ctx.lineTo(m.x, m.y);
-      ctx.lineTo(m.x + Math.min(0.5, m.w / 3), m.y);
-      ctx.lineWidth = 3.5 / zoom;
-      ctx.strokeStyle = m.color;
-      ctx.stroke();
+      if (m.vehicle) {
+        /* A chevron pointing along the vehicle's own forward axis. */
+        const cx = m.x + m.w / 2, cy = m.y + m.h / 2;
+        const nose = Math.min(m.w * 0.3, m.h * 0.35);
+        ctx.beginPath();
+        ctx.moveTo(cx + m.w / 2 - nose * 1.4, cy - nose * 0.7);
+        ctx.lineTo(cx + m.w / 2 - nose * 0.35, cy);
+        ctx.lineTo(cx + m.w / 2 - nose * 1.4, cy + nose * 0.7);
+        ctx.lineWidth = 2.4 / zoom;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = m.color;
+        ctx.stroke();
+      } else {
+        /* Corner tick so orientation is readable once rotated. */
+        ctx.beginPath();
+        ctx.moveTo(m.x, m.y + Math.min(0.5, m.h / 3));
+        ctx.lineTo(m.x, m.y);
+        ctx.lineTo(m.x + Math.min(0.5, m.w / 3), m.y);
+        ctx.lineWidth = 3.5 / zoom;
+        ctx.strokeStyle = m.color;
+        ctx.stroke();
+      }
 
       if (!state.showLabels) return;
-      const fit = Math.min(m.w, m.h) * zoom;
-      if (fit < 16) return;
+      /* Below this the box is a dot — a label would be noise. */
+      if (Math.min(m.w, m.h) * zoom < 9) return;
 
       const cx = m.x + m.w / 2, cy = m.y + m.h / 2;
       const type = M.typeById(state.doc, m.kind);
+      const raw = m.label || (type ? type.name : 'Machine');
+      const maxW = m.w * zoom - 8;
+
+      const setFont = (px) => { ctx.font = '600 ' + px.toFixed(1) + 'px Inter, "Segoe UI", system-ui, sans-serif'; };
+
+      /* Shrink to fit before giving up on putting the name inside the box. */
       let fontPx = G.clamp(Math.min(m.h * zoom * 0.3, m.w * zoom * 0.16), 8, 15);
+      ctx.save();
+      setFont(fontPx);
+      while (fontPx > MIN_LABEL_PX && ctx.measureText(raw).width > maxW) { fontPx -= 0.5; setFont(fontPx); }
+      const fitsInside = m.h * zoom >= MIN_LABEL_PX * 1.7 && ctx.measureText(raw).width <= maxW;
+      ctx.restore();
+
+      if (!fitsInside) {
+        /* A truncated name is no name at all, so put it outside instead. */
+        drawOutsideLabel(ctx, state, m, raw);
+        return;
+      }
 
       ctx.save();
       ctx.translate(cx, cy);
       ctx.scale(1 / zoom, 1 / zoom);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-
-      const maxW = m.w * zoom - 8;
-      const raw = m.label || (type ? type.name : 'Machine');
-      /* Shrink before truncating so short boxes still read. */
-      const setFont = (px) => { ctx.font = '600 ' + px.toFixed(1) + 'px Inter, "Segoe UI", system-ui, sans-serif'; };
       setFont(fontPx);
-      while (fontPx > 7.5 && ctx.measureText(raw).width > maxW) { fontPx -= 0.5; setFont(fontPx); }
       ctx.fillStyle = C.text;
-      const line = ellipsize(ctx, raw, maxW);
       const showSub = m.h * zoom > 34;
-      ctx.fillText(line, 0, showSub ? -fontPx * 0.55 : 0);
+      ctx.fillText(raw, 0, showSub ? -fontPx * 0.55 : 0);
 
       if (showSub) {
         /* Name the type too, but only when it adds something the label doesn't. */
@@ -2486,9 +2622,72 @@ window.FB = window.FB || {};
     });
   }
 
+  const MIN_LABEL_PX = 7.5;
+  /* An outside label is only worth drawing when the box is big enough to name. */
+  const MIN_OUTSIDE_BOX_PX = 26;
+
+  /* Screen-space rectangles already taken by outside labels this frame, so
+     names never pile on top of each other when the view is zoomed out. */
+  let labelRects = [];
+
+  function claimLabelRect(r) {
+    for (const o of labelRects) {
+      if (r.x < o.x + o.w && r.x + r.w > o.x && r.y < o.y + o.h && r.y + r.h > o.y) return false;
+    }
+    labelRects.push(r);
+    return true;
+  }
+
+  /* A name for a machine too small to hold it: a chip just outside the box,
+     above when a details card is already sitting underneath. */
+  function drawOutsideLabel(ctx, state, m, text) {
+    const zoom = state.cam.zoom;
+    const b = G.rectAABB(m);
+    if (Math.max(b.w, b.h) * zoom < MIN_OUTSIDE_BOX_PX) return;
+
+    const hasCard = state.showSpecs && (m.params || []).some((p) => p.k || p.v);
+    const above = hasCard;
+    const y = above ? -12 : 12;
+
+    ctx.save();
+    ctx.font = '600 10px Inter, "Segoe UI", system-ui, sans-serif';
+    const w = ctx.measureText(text).width;
+    ctx.restore();
+
+    /* Claim the space first — a name that would land on another one is
+       dropped rather than drawn over it. */
+    const anchor = R.toScreen(state.cam, b.x + b.w / 2, above ? b.y : b.y + b.h);
+    if (!claimLabelRect({ x: anchor.x - w / 2 - 4, y: anchor.y + y - 7, w: w + 8, h: 14 })) return;
+
+    ctx.save();
+    ctx.translate(b.x + b.w / 2, above ? b.y : b.y + b.h);
+    ctx.scale(1 / zoom, 1 / zoom);
+    ctx.font = '600 10px Inter, "Segoe UI", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    roundRect(ctx, -w / 2 - 4, y - 7, w + 8, 14, 3);
+    ctx.fillStyle = 'rgba(255,255,255,.9)';
+    ctx.fill();
+    ctx.strokeStyle = hexA(m.color, 0.55);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    /* A short leader so the name is clearly tied to its box. */
+    ctx.beginPath();
+    ctx.moveTo(0, above ? -5 : 5);
+    ctx.lineTo(0, above ? 0 : 0);
+    ctx.strokeStyle = hexA(m.color, 0.55);
+    ctx.stroke();
+
+    ctx.fillStyle = C.text;
+    ctx.fillText(text, 0, y);
+    ctx.restore();
+  }
+
   /* Machines named in the written process carry their step numbers. */
   function drawStepBadge(ctx, state, m) {
-    if (!state.showLabels) return;
+    if (!state.showLabels || driverPose(state, m)) return;
     const nums = M.stepsFor(state.doc, m.id);
     if (!nums.length) return;
     const zoom = state.cam.zoom;
@@ -2682,7 +2881,7 @@ window.FB = window.FB || {};
      tucked under the machine. */
   function drawSpecs(ctx, state, m) {
     const params = (m.params || []).filter((p) => p.k || p.v);
-    if (!params.length) return;
+    if (!params.length || driverPose(state, m)) return;
     const zoom = state.cam.zoom;
     if (zoom < 11) return;
 
@@ -2803,8 +3002,8 @@ window.FB = window.FB || {};
       ctx.save();
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
-      ctx.strokeStyle = 'rgba(79,156,249,.35)';
-      ctx.lineWidth = 0.5;
+      ctx.strokeStyle = 'rgba(79,156,249,.32)';
+      ctx.lineWidth = 0.3;
       for (const leg of path.legs) {
         ctx.beginPath();
         ctx.moveTo(leg.pts[0].x, leg.pts[0].y);
@@ -2815,7 +3014,19 @@ window.FB = window.FB || {};
       }
       /* Number every stop so the order is readable while editing it. */
       path.stops.forEach((s, i) => {
-        const c = M.isRect(s.item) ? G.rectCenter(s.item) : { x: s.item.x, y: s.item.y };
+        const c = s.pos;
+        if (!s.item) {
+          /* A loose point on a hand-drawn path. */
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(c.x, c.y, 4 / zoom, 0, Math.PI * 2);
+          ctx.fillStyle = '#fff';
+          ctx.fill();
+          ctx.lineWidth = 2 / zoom;
+          ctx.strokeStyle = '#4f9cf9';
+          ctx.stroke();
+          ctx.restore();
+        }
         ctx.save();
         ctx.translate(c.x, c.y);
         ctx.scale(1 / zoom, 1 / zoom);
@@ -2850,6 +3061,9 @@ window.FB = window.FB || {};
       ctx.stroke();
       ctx.restore();
     }
+
+    /* When a vehicle is driving it is the marker. */
+    if (play.driverId && M.byId(state.doc, play.driverId)) return;
 
     ctx.save();
     ctx.translate(at.x, at.y);
@@ -2907,6 +3121,30 @@ window.FB = window.FB || {};
         const a = d.points[d.points.length - 1];
         lengthText(ctx, state, a, d.cursor);
       }
+    } else if (d.kind === 'run' && d.nodes && d.nodes.length) {
+      const pts = d.cursor ? d.nodes.concat([d.cursor]) : d.nodes;
+      ctx.save();
+      ctx.setLineDash([0.5, 0.35]);
+      ctx.strokeStyle = '#4f9cf9';
+      ctx.lineWidth = 0.18;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+      ctx.restore();
+      d.nodes.forEach((p, i) => {
+        dot(ctx, p, 4 / zoom, '#4f9cf9');
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.scale(1 / zoom, 1 / zoom);
+        ctx.font = '700 10px Inter, "Segoe UI", system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#1f2937';
+        ctx.fillText(String(i + 1), 0, -13);
+        ctx.restore();
+      });
     } else if (d.kind === 'route' && d.nodes && d.nodes.length) {
       const pts = d.cursor ? d.nodes.concat([d.cursor]) : d.nodes;
       ctx.save();
@@ -3417,6 +3655,7 @@ window.FB = window.FB || {};
       case 'room':    downRect(e, wp, 'room'); break;
       case 'wall':    downWall(e, wp); break;
       case 'route':   downRoute(e, wp); break;
+      case 'runpath': downRunPath(e, wp); break;
       case 'text':    downText(e, wp); break;
       case 'measure': downMeasure(e, wp); break;
     }
@@ -3424,6 +3663,19 @@ window.FB = window.FB || {};
   }
 
   function downSelect(e, sp, wp) {
+    /* While the run is on show, its loose points are draggable. */
+    if (state.showRun) {
+      const anim = M.anim(state.doc);
+      for (let i = 0; i < anim.stops.length; i++) {
+        const st = anim.stops[i];
+        if (st.item) continue;
+        if (G.dist(st.x, st.y, wp.x, wp.y) <= tolWorld(7)) {
+          state.drag = { type: 'runStop', index: i };
+          return;
+        }
+      }
+    }
+
     /* Handles of a single selected item take priority. */
     if (state.selection.size === 1) {
       const it = M.byId(state.doc, [...state.selection][0]);
@@ -3536,6 +3788,37 @@ window.FB = window.FB || {};
     state.drag = { type: 'routePress', startScreen: screenPos(e) };
   }
 
+  /* Build the animated run by hand: click machines to visit, empty space for a
+     bend, and the path is whatever you drew. */
+  function downRunPath(e, wp) {
+    const host = M.hostAt(state.doc, wp, tolWorld(4));
+    if (!state.draft || state.draft.kind !== 'run') {
+      state.draft = { kind: 'run', stops: [], nodes: [], cursor: wp };
+    }
+    const d = state.draft;
+    const point = host ? G.rectCenter(host) : snapPoint(wp, e);
+    const last = d.nodes[d.nodes.length - 1];
+    if (last && G.dist(last.x, last.y, point.x, point.y) < 1e-6) return;
+
+    d.stops.push(host ? M.stop(host.id, 1) : M.stopAt(point.x, point.y, 0));
+    d.nodes.push(point);
+    state.drag = { type: 'runPress', startScreen: screenPos(e) };
+    app.setHint('Click machines and corners in order · Enter, double-click or right-click finishes · Esc cancels');
+  }
+
+  function finishRunPath() {
+    const d = state.draft;
+    state.draft = null;
+    app.setHint('');
+    if (!d || d.stops.length < 2) { app.invalidate(); return; }
+    M.anim(state.doc).stops = d.stops;
+    app.commit();
+    app.refresh();
+    app.toast('Run path set — ' + d.stops.length + ' stops');
+    if (!state.stickyTool) app.setTool('select');
+  }
+  T.finishRunPath = finishRunPath;
+
   function downText(e, wp) {
     const l = M.label(snapVal(wp.x, e), snapVal(wp.y, e), 'Label');
     state.doc.items.push(l);
@@ -3559,7 +3842,7 @@ window.FB = window.FB || {};
     state.cursorWorld = wp;
 
     const d = state.drag;
-    if (state.draft && (state.draft.kind === 'wall' || state.draft.kind === 'route')) {
+    if (state.draft && (state.draft.kind === 'wall' || state.draft.kind === 'route' || state.draft.kind === 'run')) {
       updateDraftCursor(e, wp);
     }
 
@@ -3591,6 +3874,15 @@ window.FB = window.FB || {};
       case 'waypoint': {
         const it = M.byId(state.doc, d.id);
         if (it) it.waypoints[d.index] = snapPoint(wp, e);
+        break;
+      }
+      case 'runStop': {
+        const st = M.anim(state.doc).stops[d.index];
+        if (st && !st.item) {
+          const p = snapPoint(wp, e);
+          st.x = p.x; st.y = p.y;
+          app.rebuildRun();
+        }
         break;
       }
       case 'endpoint': {
@@ -3630,6 +3922,13 @@ window.FB = window.FB || {};
 
   function updateDraftCursor(e, wp) {
     const d = state.draft;
+    if (d.kind === 'run') {
+      const host = M.hostAt(state.doc, wp, tolWorld(4));
+      d.cursor = host ? G.rectCenter(host) : snapPoint(wp, e);
+      state.hover = host ? host.id : null;
+      app.invalidate();
+      return;
+    }
     if (d.kind === 'wall') {
       const last = d.points[d.points.length - 1];
       d.cursor = e.shiftKey ? snapPoint(G.constrain45(last, wp), e) : snapPoint(wp, e);
@@ -3772,6 +4071,7 @@ window.FB = window.FB || {};
       case 'vertex':
       case 'waypoint':
       case 'endpoint':
+      case 'runStop':
         app.commit();
         break;
       case 'marquee': {
@@ -3802,6 +4102,8 @@ window.FB = window.FB || {};
         }
         break;
       }
+      case 'runPress':
+        break;
       case 'routePress': {
         const dr = state.draft;
         if (dr && dr.kind === 'route' && dragged(d, e)) {
@@ -3932,6 +4234,7 @@ window.FB = window.FB || {};
   T.commitDraft = () => {
     if (!state.draft) return false;
     if (state.draft.kind === 'wall') { finishWall(); return true; }
+    if (state.draft.kind === 'run') { finishRunPath(); return true; }
     if (state.draft.kind === 'route') {
       const d = state.draft;
       const host = d.hostId ? M.byId(state.doc, d.hostId) : null;
@@ -3951,6 +4254,7 @@ window.FB = window.FB || {};
   function onDblClick(e) {
     const wp = worldPos(e);
     if (state.draft && state.draft.kind === 'wall') { finishWall(); return; }
+    if (state.draft && state.draft.kind === 'run') { finishRunPath(); return; }
     if (state.draft && state.draft.kind === 'route') {
       const host = M.hostAt(state.doc, wp, tolWorld(4));
       if (host && host.id !== (state.draft.from.item || null)) finishRoute(M.endpointOn(host.id));
@@ -4371,6 +4675,10 @@ window.FB = window.FB || {};
 
     host.appendChild(row('Colour', colorInput(m.color, (v) => { m.color = v; })));
     host.appendChild(row('Clearance', numberInput(m.clearance, 0.25, (v) => { m.clearance = Math.max(0, v); })));
+    host.appendChild(checkInput('Vehicle — can drive the run', m.vehicle, (v) => {
+      m.vehicle = v;
+      U.refreshStops();
+    }));
 
     const notes = el('textarea', { rows: 2, placeholder: 'Notes, cycle time, operator…' });
     notes.value = m.notes || '';
@@ -4513,11 +4821,16 @@ window.FB = window.FB || {};
   function commonActions(items) {
     const allLocked = items.every((it) => it.locked);
     return el('div', {}, [
+      el('div', { class: 'subhead', text: 'Stacking order' }),
+      el('div', { class: 'btnrow' }, [
+        button('To front', () => app.reorderExtreme(true), '', 'Put it above everything (})'),
+        button('Forward', () => app.reorder(1), '', 'Bring forward one step (])'),
+        button('Back', () => app.reorder(-1), '', 'Send backward one step ([)'),
+        button('To back', () => app.reorderExtreme(false), '', 'Put it behind everything ({)'),
+      ]),
       el('div', { class: 'subhead', text: 'Actions' }),
       el('div', { class: 'btnrow' }, [
         button('Duplicate', () => app.duplicate()),
-        button('Forward', () => app.reorder(1), '', 'Bring forward (])'),
-        button('Back', () => app.reorder(-1), '', 'Send backward ([)'),
         button(allLocked ? 'Unlock' : 'Lock', () => app.setLocked(items.map((i) => i.id), !allLocked), '',
           'A locked item cannot be selected or dragged on the canvas'),
         button('Delete', () => app.deleteSelection(), 'danger'),
@@ -4892,12 +5205,18 @@ window.FB = window.FB || {};
     });
     lock.addEventListener('click', (e) => { e.stopPropagation(); app.setLocked([it.id], !it.locked); });
 
-    const up = el('button', { class: 'layer-btn', text: '↑', title: 'Bring forward' });
+    const top = el('button', { class: 'layer-btn', text: '⤒', title: 'Bring to front' });
+    top.addEventListener('click', (e) => { e.stopPropagation(); app.moveItemExtreme(it.id, true); });
+    const up = el('button', { class: 'layer-btn', text: '↑', title: 'Bring forward one step' });
     up.addEventListener('click', (e) => { e.stopPropagation(); app.moveItem(it.id, 1); });
-    const down = el('button', { class: 'layer-btn', text: '↓', title: 'Send backward' });
+    const down = el('button', { class: 'layer-btn', text: '↓', title: 'Send backward one step' });
     down.addEventListener('click', (e) => { e.stopPropagation(); app.moveItem(it.id, -1); });
-    up.disabled = index === state.doc.items.length - 1;
-    down.disabled = index === 0;
+    const bottom = el('button', { class: 'layer-btn', text: '⤓', title: 'Send to back' });
+    bottom.addEventListener('click', (e) => { e.stopPropagation(); app.moveItemExtreme(it.id, false); });
+    const atTop = index === state.doc.items.length - 1;
+    const atBottom = index === 0;
+    top.disabled = atTop; up.disabled = atTop;
+    down.disabled = atBottom; bottom.disabled = atBottom;
 
     const row = el('div', {
       class: 'layer-row' + (state.selection.has(it.id) ? ' sel' : '') + (it.hidden ? ' off' : ''),
@@ -4906,7 +5225,7 @@ window.FB = window.FB || {};
       dot,
       el('span', { class: 'layer-name', text: itemName(state.doc, it) }),
       el('span', { class: 'layer-kind', text: TYPE_LABEL[it.type] || it.type }),
-      up, down, eye, lock,
+      top, up, down, bottom, eye, lock,
     ]);
     row.addEventListener('click', () => {
       if (it.locked || it.hidden) { app.toast(it.locked ? 'That layer is locked' : 'That layer is hidden'); return; }
@@ -4930,11 +5249,17 @@ window.FB = window.FB || {};
     }
 
     anim.stops.forEach((st, i) => {
-      const item = M.byId(state.doc, st.item);
-      if (!item) return;
+      const item = st.item ? M.byId(state.doc, st.item) : null;
+      if (st.item && !item) return;
 
-      const name = el('span', { class: 'stop-name', text: itemName(state.doc, item), title: 'Select it' });
-      name.addEventListener('click', () => app.focusItem(item.id));
+      const label = item ? itemName(state.doc, item)
+        : 'Point ' + R.fmt(st.x) + ', ' + R.fmt(st.y);
+      const name = el('span', {
+        class: 'stop-name',
+        text: label,
+        title: item ? 'Select it' : 'A hand-placed point — drag it on the canvas',
+      });
+      if (item) name.addEventListener('click', () => app.focusItem(item.id));
 
       const dwell = el('input', { class: 'stop-dwell', type: 'number', step: '0.5', min: '0' });
       dwell.value = R.fmt(st.dwell);
@@ -5059,6 +5384,7 @@ window.FB = window.FB || {};
   };
 
   app.refresh = () => {
+    syncDriverPicker();
     FB.ui.refreshProps();
     FB.ui.refreshStats();
     FB.ui.refreshProcess();
@@ -5106,6 +5432,7 @@ window.FB = window.FB || {};
   const TOOL_NAMES = {
     select: 'Select', machine: 'Machine', wall: 'Wall', room: 'Room',
     route: 'Route', zone: 'Zone', text: 'Text', measure: 'Measure', pan: 'Pan',
+    runpath: 'Run path',
   };
 
   app.setHint = (text) => { document.getElementById('statHint').textContent = text || ''; };
@@ -5138,6 +5465,7 @@ window.FB = window.FB || {};
       zone: 'Drag out an area to name it',
       text: 'Click to drop a text label',
       measure: 'Drag to measure a distance',
+      runpath: 'Click machines and corners in order · Enter or right-click finishes',
     };
     app.setHint(hints[tool] || '');
     app.refreshStatus();
@@ -5375,6 +5703,28 @@ window.FB = window.FB || {};
     app.refresh();
   };
 
+  /* Move the whole selection to the very top or bottom, keeping the order they
+     already have relative to each other. */
+  app.reorderExtreme = (toFront) => {
+    const ids = new Set(state.selection);
+    if (!ids.size) return;
+    const picked = state.doc.items.filter((it) => ids.has(it.id));
+    const rest = state.doc.items.filter((it) => !ids.has(it.id));
+    state.doc.items = toFront ? rest.concat(picked) : picked.concat(rest);
+    app.commit();
+    app.refresh();
+  };
+
+  app.moveItemExtreme = (id, toFront) => {
+    const items = state.doc.items;
+    const i = items.findIndex((it) => it.id === id);
+    if (i < 0) return;
+    const [it] = items.splice(i, 1);
+    if (toFront) items.push(it); else items.unshift(it);
+    app.commit();
+    app.refresh();
+  };
+
   app.moveItem = (id, dir) => {
     const items = state.doc.items;
     const i = items.findIndex((it) => it.id === id);
@@ -5405,11 +5755,37 @@ window.FB = window.FB || {};
 
   app.rebuildRun = () => {
     const play = state.play;
+    const anim = M.anim(state.doc);
+    play.driverId = anim.driver && M.byId(state.doc, anim.driver) ? anim.driver : null;
     play.path = M.animPath(state.doc);
     play.duration = M.animDuration(state.doc, play.path);
     if (play.t > play.duration) play.t = 0;
     updateRunReadout();
   };
+
+  /* Rebuild the "driven by" list from whatever is marked as a vehicle. */
+  function syncDriverPicker() {
+    const sel = document.getElementById('runDriver');
+    if (!sel) return;
+    const anim = M.anim(state.doc);
+    const vehicles = M.vehicles(state.doc);
+    if (anim.driver && !vehicles.some((v) => v.id === anim.driver)) anim.driver = null;
+
+    sel.innerHTML = '';
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = vehicles.length ? 'A plain marker' : 'A plain marker — no vehicles yet';
+    sel.appendChild(none);
+    for (const v of vehicles) {
+      const o = document.createElement('option');
+      o.value = v.id;
+      o.textContent = v.label || 'Vehicle';
+      sel.appendChild(o);
+    }
+    sel.value = anim.driver || '';
+    state.play.driverId = anim.driver || null;
+  }
+  app.syncDriverPicker = syncDriverPicker;
 
   function updateRunReadout() {
     const play = state.play;
@@ -5470,6 +5846,12 @@ window.FB = window.FB || {};
     app.toast('Run built from ' + order.length + ' stops');
   };
 
+  app.drawRunPath = () => {
+    app.showPane('play');
+    app.setTool('runpath');
+    app.setHint('Click machines and corners in order · Enter, double-click or right-click finishes');
+  };
+
   app.addStop = () => {
     const anim = M.anim(state.doc);
     const picked = state.doc.items.filter((it) => state.selection.has(it.id) && (it.type === 'machine' || it.type === 'zone'));
@@ -5509,6 +5891,7 @@ window.FB = window.FB || {};
     document.getElementById('typeW').value = t ? R.fmt(t.w) : '3';
     document.getElementById('typeH').value = t ? R.fmt(t.h) : '2';
     document.getElementById('typeColor').value = t ? t.color : M.nextTypeColor(state.doc);
+    document.getElementById('typeVehicle').checked = !!(t && t.vehicle);
 
     const used = t ? M.machinesOfType(state.doc, t.id).length : 0;
     const applyRow = document.getElementById('typeApplyRow');
@@ -5537,22 +5920,25 @@ window.FB = window.FB || {};
     const color = document.getElementById('typeColor').value;
     if (!name) { app.toast('Give the type a name'); document.getElementById('typeName').focus(); return; }
 
+    const vehicle = document.getElementById('typeVehicle').checked;
     const existing = M.typeById(state.doc, editingType);
     if (existing) {
       existing.name = name;
       existing.w = w;
       existing.h = h;
       existing.color = color;
+      existing.vehicle = vehicle;
       if (document.getElementById('typeApply').checked) {
         for (const m of M.machinesOfType(state.doc, existing.id)) {
           m.color = color;
           m.w = w;
           m.h = h;
+          m.vehicle = vehicle;
         }
       }
       app.toast('Type updated');
     } else {
-      const t = M.type(name, w, h, color);
+      const t = M.type(name, w, h, color, vehicle);
       M.types(state.doc).push(t);
       state.activeType = t.id;
       app.toast('“' + name + '” added — pick it and drag a box');
@@ -5581,7 +5967,7 @@ window.FB = window.FB || {};
 
   /* Turn a box already on the floor into a reusable type. */
   app.saveMachineAsType = (m) => {
-    const t = M.type(m.label || 'Machine', m.w, m.h, m.color);
+    const t = M.type(m.label || 'Machine', m.w, m.h, m.color, m.vehicle);
     M.types(state.doc).push(t);
     m.kind = t.id;
     state.activeType = t.id;
@@ -5891,6 +6277,7 @@ window.FB = window.FB || {};
       tables: on('printSummary'),
       header: on('printHeader'),
       orientation: document.getElementById('printOrient').value,
+      paper: document.getElementById('printPaper').value,
     };
   }
 
@@ -5898,16 +6285,30 @@ window.FB = window.FB || {};
      the size it will physically occupy, so labels, badges and detail cards come
      out the same readable size whatever the plant measures. */
   const MM = 96 / 25.4;
+  const MARGIN_MM = 10;
+
+  /* Short edge first, in millimetres, with the CSS @page keyword. */
+  const PAPERS = {
+    a4:      { w: 210, h: 297, css: 'A4', name: 'A4' },
+    a3:      { w: 297, h: 420, css: 'A3', name: 'A3' },
+    letter:  { w: 216, h: 279, css: 'letter', name: 'Letter' },
+    ledger:  { w: 279, h: 432, css: 'ledger', name: 'Ledger' },
+  };
 
   function printGeometry(o) {
+    const paper = PAPERS[o.paper] || PAPERS.a4;
     const landscape = o.orientation === 'landscape';
-    const availW = (landscape ? 277 : 190) * MM;
-    const availH = ((landscape ? 165 : 235) - (o.header ? 12 : 0)) * MM;
+    const sheetW = landscape ? paper.h : paper.w;
+    const sheetH = landscape ? paper.w : paper.h;
+
+    const availWmm = sheetW - MARGIN_MM * 2;
+    const availHmm = sheetH - MARGIN_MM * 2 - (o.header ? 12 : 0);
+
     const b = M.docBounds(state.doc);
     if (!b) return null;
     const pad = 1;
-    const zoom = Math.min(availW / (b.w + pad * 2), availH / (b.h + pad * 2));
-    return { zoom: Math.max(4, zoom), pad: pad };
+    const zoom = Math.min((availWmm * MM) / (b.w + pad * 2), (availHmm * MM) / (b.h + pad * 2));
+    return { zoom: Math.max(4, zoom), pad: pad, paper: paper, availWmm: availWmm, availHmm: availHmm };
   }
 
   function printRender(o, dpr) {
@@ -5953,7 +6354,7 @@ window.FB = window.FB || {};
     img.src = off.toDataURL('image/png');
     const b = M.docBounds(state.doc);
     const geo = printGeometry(o);
-    note.textContent = R.fmt(b.w) + ' × ' + R.fmt(b.h) + ' m · A4 ' + o.orientation +
+    note.textContent = R.fmt(b.w) + ' × ' + R.fmt(b.h) + ' m · ' + geo.paper.name + ' ' + o.orientation +
       ' · 1:' + Math.round(1000 / (geo.zoom / MM)) +
       (o.tables ? ' · plus summary tables' : '');
   };
@@ -6010,9 +6411,13 @@ window.FB = window.FB || {};
     const off = printRender(o, 3);
     if (!off) { app.toast('Nothing to print yet'); return; }
 
+    const geo = printGeometry(o);
     document.getElementById('printPageStyle').textContent =
-      '@page { size: A4 ' + o.orientation + '; margin: 10mm; }';
-    document.body.classList.toggle('print-portrait', o.orientation === 'portrait');
+      '@page { size: ' + geo.paper.css + ' ' + o.orientation + '; margin: ' + MARGIN_MM + 'mm; }';
+    /* The image box has to match whatever sheet was chosen. */
+    const image = document.getElementById('printImage');
+    image.style.maxHeight = geo.availHmm + 'mm';
+    image.style.maxWidth = geo.availWmm + 'mm';
 
     const s = M.stats(state.doc);
     const zoneTime = state.doc.items
@@ -6050,7 +6455,7 @@ window.FB = window.FB || {};
 
   /* ---------- keyboard ---------- */
 
-  const TOOL_KEYS = { v: 'select', m: 'machine', w: 'wall', r: 'room', e: 'route', z: 'zone', t: 'text', k: 'measure', h: 'pan' };
+  const TOOL_KEYS = { v: 'select', m: 'machine', w: 'wall', r: 'room', e: 'route', z: 'zone', t: 'text', k: 'measure', h: 'pan', g: 'runpath' };
 
   function onKeyDown(e) {
     const tag = (e.target.tagName || '').toLowerCase();
@@ -6139,6 +6544,8 @@ window.FB = window.FB || {};
     if (e.key === 'p' || e.key === 'P') { app.toggleRun(); return; }
     if (e.key === '[') { app.reorder(-1); return; }
     if (e.key === ']') { app.reorder(1); return; }
+    if (e.key === '{') { app.reorderExtreme(false); return; }
+    if (e.key === '}') { app.reorderExtreme(true); return; }
     if (e.key === '?') { toggleHelp(true); return; }
     if (e.key === 'f' || e.key === 'F') { app.zoomFit(); return; }
     if (e.key === '+' || e.key === '=') { app.zoomBy(1.2); return; }
@@ -6184,6 +6591,7 @@ window.FB = window.FB || {};
   };
 
   function syncRunControls() {
+    syncDriverPicker();
     const anim = M.anim(state.doc);
     const speed = document.getElementById('runSpeed');
     if (speed) {
@@ -6245,7 +6653,7 @@ window.FB = window.FB || {};
     document.getElementById('printModal').addEventListener('click', (e) => {
       if (e.target.id === 'printModal') app.closePrintDialog();
     });
-    ['printDetails', 'printTimes', 'printLabels', 'printGrid', 'printSummary', 'printOrient']
+    ['printDetails', 'printTimes', 'printLabels', 'printGrid', 'printSummary', 'printOrient', 'printPaper']
       .forEach((id) => document.getElementById(id).addEventListener('change', app.updatePrintPreview));
     document.getElementById('btnUndo').addEventListener('click', app.undo);
     document.getElementById('btnRedo').addEventListener('click', app.redo);
@@ -6267,7 +6675,13 @@ window.FB = window.FB || {};
 
     document.getElementById('btnPlay').addEventListener('click', app.toggleRun);
     document.getElementById('btnRestart').addEventListener('click', app.restartRun);
+    document.getElementById('btnDrawPath').addEventListener('click', app.drawRunPath);
     document.getElementById('btnBuildRun').addEventListener('click', app.buildRun);
+    document.getElementById('runDriver').addEventListener('change', (e) => {
+      M.anim(state.doc).driver = e.target.value || null;
+      app.commit();
+      app.invalidate();
+    });
     document.getElementById('btnAddStop').addEventListener('click', app.addStop);
     document.getElementById('runScrub').addEventListener('input', (e) => {
       const play = state.play;

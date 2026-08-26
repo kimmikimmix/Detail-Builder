@@ -5,8 +5,10 @@
   --line:      #2c3444;
   --line-2:    #3a4459;
   --text:      #e6ebf2;
-  --text-dim:  #98a3b5;
-  --text-dim2: #6b7688;
+  --text-dim:  #a2adbe;
+  /* Both dim tones clear 4.5:1 on every panel background — the old dim2 sat
+     at 3.3:1 and small notes were barely legible. */
+  --text-dim2: #8792a5;
   --accent:    #4f9cf9;
   --accent-2:  #2b7de0;
   --danger:    #ef5350;
@@ -656,8 +658,8 @@ body.focus .canvas-wrap { border-left: none; }
 .layer-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
+  gap: 3px;
+  padding: 4px 5px;
   border: 1px solid transparent;
   border-radius: 5px;
   cursor: pointer;
@@ -667,12 +669,12 @@ body.focus .canvas-wrap { border-left: none; }
 .layer-row:hover { background: var(--bg-3); color: var(--text); }
 .layer-row.sel { background: #24334a; border-color: var(--accent); color: var(--text); }
 .layer-row.off { opacity: .45; }
-.layer-dot { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.layer-dot { width: 9px; height: 9px; border-radius: 2px; flex: none; margin-right: 3px; }
 .layer-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer-kind { font-size: 10px; color: var(--text-dim2); flex: none; }
 .layer-btn {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   flex: none;
   display: grid;
   place-items: center;
@@ -769,8 +771,8 @@ body.focus .canvas-wrap { border-left: none; }
   .print-meta { font-size: 10px; color: #566072; }
 
   .print-figure { text-align: center; }
-  .print-figure img { max-width: 100%; max-height: 165mm; object-fit: contain; }
-  body.print-portrait .print-figure img { max-height: 235mm; }
+  /* max-width / max-height are set from the chosen paper size. */
+  .print-figure img { max-width: 100%; object-fit: contain; }
 
   .print-tables { margin-top: 10px; }
   .print-tables:empty { display: none; }

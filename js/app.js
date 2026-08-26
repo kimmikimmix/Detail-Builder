@@ -82,6 +82,7 @@
   };
 
   app.refresh = () => {
+    syncDriverPicker();
     FB.ui.refreshProps();
     FB.ui.refreshStats();
     FB.ui.refreshProcess();
@@ -129,6 +130,7 @@
   const TOOL_NAMES = {
     select: 'Select', machine: 'Machine', wall: 'Wall', room: 'Room',
     route: 'Route', zone: 'Zone', text: 'Text', measure: 'Measure', pan: 'Pan',
+    runpath: 'Run path',
   };
 
   app.setHint = (text) => { document.getElementById('statHint').textContent = text || ''; };
@@ -161,6 +163,7 @@
       zone: 'Drag out an area to name it',
       text: 'Click to drop a text label',
       measure: 'Drag to measure a distance',
+      runpath: 'Click machines and corners in order · Enter or right-click finishes',
     };
     app.setHint(hints[tool] || '');
     app.refreshStatus();
@@ -398,6 +401,28 @@
     app.refresh();
   };
 
+  /* Move the whole selection to the very top or bottom, keeping the order they
+     already have relative to each other. */
+  app.reorderExtreme = (toFront) => {
+    const ids = new Set(state.selection);
+    if (!ids.size) return;
+    const picked = state.doc.items.filter((it) => ids.has(it.id));
+    const rest = state.doc.items.filter((it) => !ids.has(it.id));
+    state.doc.items = toFront ? rest.concat(picked) : picked.concat(rest);
+    app.commit();
+    app.refresh();
+  };
+
+  app.moveItemExtreme = (id, toFront) => {
+    const items = state.doc.items;
+    const i = items.findIndex((it) => it.id === id);
+    if (i < 0) return;
+    const [it] = items.splice(i, 1);
+    if (toFront) items.push(it); else items.unshift(it);
+    app.commit();
+    app.refresh();
+  };
+
   app.moveItem = (id, dir) => {
     const items = state.doc.items;
     const i = items.findIndex((it) => it.id === id);
@@ -428,11 +453,37 @@
 
   app.rebuildRun = () => {
     const play = state.play;
+    const anim = M.anim(state.doc);
+    play.driverId = anim.driver && M.byId(state.doc, anim.driver) ? anim.driver : null;
     play.path = M.animPath(state.doc);
     play.duration = M.animDuration(state.doc, play.path);
     if (play.t > play.duration) play.t = 0;
     updateRunReadout();
   };
+
+  /* Rebuild the "driven by" list from whatever is marked as a vehicle. */
+  function syncDriverPicker() {
+    const sel = document.getElementById('runDriver');
+    if (!sel) return;
+    const anim = M.anim(state.doc);
+    const vehicles = M.vehicles(state.doc);
+    if (anim.driver && !vehicles.some((v) => v.id === anim.driver)) anim.driver = null;
+
+    sel.innerHTML = '';
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = vehicles.length ? 'A plain marker' : 'A plain marker — no vehicles yet';
+    sel.appendChild(none);
+    for (const v of vehicles) {
+      const o = document.createElement('option');
+      o.value = v.id;
+      o.textContent = v.label || 'Vehicle';
+      sel.appendChild(o);
+    }
+    sel.value = anim.driver || '';
+    state.play.driverId = anim.driver || null;
+  }
+  app.syncDriverPicker = syncDriverPicker;
 
   function updateRunReadout() {
     const play = state.play;
@@ -493,6 +544,12 @@
     app.toast('Run built from ' + order.length + ' stops');
   };
 
+  app.drawRunPath = () => {
+    app.showPane('play');
+    app.setTool('runpath');
+    app.setHint('Click machines and corners in order · Enter, double-click or right-click finishes');
+  };
+
   app.addStop = () => {
     const anim = M.anim(state.doc);
     const picked = state.doc.items.filter((it) => state.selection.has(it.id) && (it.type === 'machine' || it.type === 'zone'));
@@ -532,6 +589,7 @@
     document.getElementById('typeW').value = t ? R.fmt(t.w) : '3';
     document.getElementById('typeH').value = t ? R.fmt(t.h) : '2';
     document.getElementById('typeColor').value = t ? t.color : M.nextTypeColor(state.doc);
+    document.getElementById('typeVehicle').checked = !!(t && t.vehicle);
 
     const used = t ? M.machinesOfType(state.doc, t.id).length : 0;
     const applyRow = document.getElementById('typeApplyRow');
@@ -560,22 +618,25 @@
     const color = document.getElementById('typeColor').value;
     if (!name) { app.toast('Give the type a name'); document.getElementById('typeName').focus(); return; }
 
+    const vehicle = document.getElementById('typeVehicle').checked;
     const existing = M.typeById(state.doc, editingType);
     if (existing) {
       existing.name = name;
       existing.w = w;
       existing.h = h;
       existing.color = color;
+      existing.vehicle = vehicle;
       if (document.getElementById('typeApply').checked) {
         for (const m of M.machinesOfType(state.doc, existing.id)) {
           m.color = color;
           m.w = w;
           m.h = h;
+          m.vehicle = vehicle;
         }
       }
       app.toast('Type updated');
     } else {
-      const t = M.type(name, w, h, color);
+      const t = M.type(name, w, h, color, vehicle);
       M.types(state.doc).push(t);
       state.activeType = t.id;
       app.toast('“' + name + '” added — pick it and drag a box');
@@ -604,7 +665,7 @@
 
   /* Turn a box already on the floor into a reusable type. */
   app.saveMachineAsType = (m) => {
-    const t = M.type(m.label || 'Machine', m.w, m.h, m.color);
+    const t = M.type(m.label || 'Machine', m.w, m.h, m.color, m.vehicle);
     M.types(state.doc).push(t);
     m.kind = t.id;
     state.activeType = t.id;
@@ -914,6 +975,7 @@
       tables: on('printSummary'),
       header: on('printHeader'),
       orientation: document.getElementById('printOrient').value,
+      paper: document.getElementById('printPaper').value,
     };
   }
 
@@ -921,16 +983,30 @@
      the size it will physically occupy, so labels, badges and detail cards come
      out the same readable size whatever the plant measures. */
   const MM = 96 / 25.4;
+  const MARGIN_MM = 10;
+
+  /* Short edge first, in millimetres, with the CSS @page keyword. */
+  const PAPERS = {
+    a4:      { w: 210, h: 297, css: 'A4', name: 'A4' },
+    a3:      { w: 297, h: 420, css: 'A3', name: 'A3' },
+    letter:  { w: 216, h: 279, css: 'letter', name: 'Letter' },
+    ledger:  { w: 279, h: 432, css: 'ledger', name: 'Ledger' },
+  };
 
   function printGeometry(o) {
+    const paper = PAPERS[o.paper] || PAPERS.a4;
     const landscape = o.orientation === 'landscape';
-    const availW = (landscape ? 277 : 190) * MM;
-    const availH = ((landscape ? 165 : 235) - (o.header ? 12 : 0)) * MM;
+    const sheetW = landscape ? paper.h : paper.w;
+    const sheetH = landscape ? paper.w : paper.h;
+
+    const availWmm = sheetW - MARGIN_MM * 2;
+    const availHmm = sheetH - MARGIN_MM * 2 - (o.header ? 12 : 0);
+
     const b = M.docBounds(state.doc);
     if (!b) return null;
     const pad = 1;
-    const zoom = Math.min(availW / (b.w + pad * 2), availH / (b.h + pad * 2));
-    return { zoom: Math.max(4, zoom), pad: pad };
+    const zoom = Math.min((availWmm * MM) / (b.w + pad * 2), (availHmm * MM) / (b.h + pad * 2));
+    return { zoom: Math.max(4, zoom), pad: pad, paper: paper, availWmm: availWmm, availHmm: availHmm };
   }
 
   function printRender(o, dpr) {
@@ -976,7 +1052,7 @@
     img.src = off.toDataURL('image/png');
     const b = M.docBounds(state.doc);
     const geo = printGeometry(o);
-    note.textContent = R.fmt(b.w) + ' × ' + R.fmt(b.h) + ' m · A4 ' + o.orientation +
+    note.textContent = R.fmt(b.w) + ' × ' + R.fmt(b.h) + ' m · ' + geo.paper.name + ' ' + o.orientation +
       ' · 1:' + Math.round(1000 / (geo.zoom / MM)) +
       (o.tables ? ' · plus summary tables' : '');
   };
@@ -1033,9 +1109,13 @@
     const off = printRender(o, 3);
     if (!off) { app.toast('Nothing to print yet'); return; }
 
+    const geo = printGeometry(o);
     document.getElementById('printPageStyle').textContent =
-      '@page { size: A4 ' + o.orientation + '; margin: 10mm; }';
-    document.body.classList.toggle('print-portrait', o.orientation === 'portrait');
+      '@page { size: ' + geo.paper.css + ' ' + o.orientation + '; margin: ' + MARGIN_MM + 'mm; }';
+    /* The image box has to match whatever sheet was chosen. */
+    const image = document.getElementById('printImage');
+    image.style.maxHeight = geo.availHmm + 'mm';
+    image.style.maxWidth = geo.availWmm + 'mm';
 
     const s = M.stats(state.doc);
     const zoneTime = state.doc.items
@@ -1073,7 +1153,7 @@
 
   /* ---------- keyboard ---------- */
 
-  const TOOL_KEYS = { v: 'select', m: 'machine', w: 'wall', r: 'room', e: 'route', z: 'zone', t: 'text', k: 'measure', h: 'pan' };
+  const TOOL_KEYS = { v: 'select', m: 'machine', w: 'wall', r: 'room', e: 'route', z: 'zone', t: 'text', k: 'measure', h: 'pan', g: 'runpath' };
 
   function onKeyDown(e) {
     const tag = (e.target.tagName || '').toLowerCase();
@@ -1162,6 +1242,8 @@
     if (e.key === 'p' || e.key === 'P') { app.toggleRun(); return; }
     if (e.key === '[') { app.reorder(-1); return; }
     if (e.key === ']') { app.reorder(1); return; }
+    if (e.key === '{') { app.reorderExtreme(false); return; }
+    if (e.key === '}') { app.reorderExtreme(true); return; }
     if (e.key === '?') { toggleHelp(true); return; }
     if (e.key === 'f' || e.key === 'F') { app.zoomFit(); return; }
     if (e.key === '+' || e.key === '=') { app.zoomBy(1.2); return; }
@@ -1207,6 +1289,7 @@
   };
 
   function syncRunControls() {
+    syncDriverPicker();
     const anim = M.anim(state.doc);
     const speed = document.getElementById('runSpeed');
     if (speed) {
@@ -1268,7 +1351,7 @@
     document.getElementById('printModal').addEventListener('click', (e) => {
       if (e.target.id === 'printModal') app.closePrintDialog();
     });
-    ['printDetails', 'printTimes', 'printLabels', 'printGrid', 'printSummary', 'printOrient']
+    ['printDetails', 'printTimes', 'printLabels', 'printGrid', 'printSummary', 'printOrient', 'printPaper']
       .forEach((id) => document.getElementById(id).addEventListener('change', app.updatePrintPreview));
     document.getElementById('btnUndo').addEventListener('click', app.undo);
     document.getElementById('btnRedo').addEventListener('click', app.redo);
@@ -1290,7 +1373,13 @@
 
     document.getElementById('btnPlay').addEventListener('click', app.toggleRun);
     document.getElementById('btnRestart').addEventListener('click', app.restartRun);
+    document.getElementById('btnDrawPath').addEventListener('click', app.drawRunPath);
     document.getElementById('btnBuildRun').addEventListener('click', app.buildRun);
+    document.getElementById('runDriver').addEventListener('change', (e) => {
+      M.anim(state.doc).driver = e.target.value || null;
+      app.commit();
+      app.invalidate();
+    });
     document.getElementById('btnAddStop').addEventListener('click', app.addStop);
     document.getElementById('runScrub').addEventListener('input', (e) => {
       const play = state.play;

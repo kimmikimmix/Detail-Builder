@@ -77,13 +77,11 @@
 
     const view = G.padAABB(R.viewBounds(cam), 4);
     const selected = state.selection;
+    labelRects = [];
 
-    /* Painted in type order so machines sit above zones and under routes. */
-    for (const it of doc.items) if (it.type === 'zone') drawItem(ctx, state, it, view);
-    for (const it of doc.items) if (it.type === 'wall') drawItem(ctx, state, it, view);
-    for (const it of doc.items) if (it.type === 'machine') drawItem(ctx, state, it, view);
-    for (const it of doc.items) if (it.type === 'route') drawItem(ctx, state, it, view);
-    for (const it of doc.items) if (it.type === 'label') drawItem(ctx, state, it, view);
+    /* Painted in list order, so the Layers list is the truth about what covers
+       what and sending something to the top actually puts it there. */
+    for (const it of doc.items) drawItem(ctx, state, it, view);
 
     if (state.showSpecs) {
       for (const it of doc.items) if (it.type === 'machine' && !it.hidden) drawSpecs(ctx, state, it);
@@ -165,8 +163,34 @@
 
   /* ---------- items ---------- */
 
+  /* The vehicle assigned to the run rides it instead of sitting where it was
+     parked — drawn transformed, so the document is never touched. */
+  function driverPose(state, m) {
+    const play = state.play;
+    if (!play || !play.at || !play.driverId || play.driverId !== m.id) return null;
+    /* Parked until the run actually starts, so the layout reads normally and
+       Restart brings the vehicle home. */
+    if (!play.running && play.t <= 0) return null;
+    return play.at;
+  }
+  R.driverPose = driverPose;
+
   function drawItem(ctx, state, it, view) {
     if (it.hidden) return;
+
+    const pose = it.type === 'machine' ? driverPose(state, it) : null;
+    if (pose) {
+      const c = G.rectCenter(it);
+      const riding = Object.assign({}, it, { rot: 0 });
+      ctx.save();
+      ctx.translate(pose.x, pose.y);
+      ctx.rotate(pose.angle || 0);
+      ctx.translate(-c.x, -c.y);
+      drawMachine(ctx, state, riding);
+      ctx.restore();
+      return;
+    }
+
     const b = M.bounds(state.doc, it);
     if (b && !G.aabbOverlap(b, view)) return;
     switch (it.type) {
@@ -217,46 +241,76 @@
         ctx.restore();
       }
 
-      roundRect(ctx, m.x, m.y, m.w, m.h, Math.min(0.18, m.w / 6, m.h / 6));
+      const radius = m.vehicle
+        ? Math.min(m.w, m.h) / 3
+        : Math.min(0.18, m.w / 6, m.h / 6);
+      roundRect(ctx, m.x, m.y, m.w, m.h, radius);
       ctx.fillStyle = hexA(m.color, 0.24);
       ctx.fill();
       ctx.lineWidth = 2 / zoom;
       ctx.strokeStyle = m.color;
+      if (m.vehicle) ctx.setLineDash([0.35, 0.22]);
       ctx.stroke();
+      ctx.setLineDash([]);
 
-      /* Corner tick so orientation is readable once rotated. */
-      ctx.beginPath();
-      ctx.moveTo(m.x, m.y + Math.min(0.5, m.h / 3));
-      ctx.lineTo(m.x, m.y);
-      ctx.lineTo(m.x + Math.min(0.5, m.w / 3), m.y);
-      ctx.lineWidth = 3.5 / zoom;
-      ctx.strokeStyle = m.color;
-      ctx.stroke();
+      if (m.vehicle) {
+        /* A chevron pointing along the vehicle's own forward axis. */
+        const cx = m.x + m.w / 2, cy = m.y + m.h / 2;
+        const nose = Math.min(m.w * 0.3, m.h * 0.35);
+        ctx.beginPath();
+        ctx.moveTo(cx + m.w / 2 - nose * 1.4, cy - nose * 0.7);
+        ctx.lineTo(cx + m.w / 2 - nose * 0.35, cy);
+        ctx.lineTo(cx + m.w / 2 - nose * 1.4, cy + nose * 0.7);
+        ctx.lineWidth = 2.4 / zoom;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = m.color;
+        ctx.stroke();
+      } else {
+        /* Corner tick so orientation is readable once rotated. */
+        ctx.beginPath();
+        ctx.moveTo(m.x, m.y + Math.min(0.5, m.h / 3));
+        ctx.lineTo(m.x, m.y);
+        ctx.lineTo(m.x + Math.min(0.5, m.w / 3), m.y);
+        ctx.lineWidth = 3.5 / zoom;
+        ctx.strokeStyle = m.color;
+        ctx.stroke();
+      }
 
       if (!state.showLabels) return;
-      const fit = Math.min(m.w, m.h) * zoom;
-      if (fit < 16) return;
+      /* Below this the box is a dot — a label would be noise. */
+      if (Math.min(m.w, m.h) * zoom < 9) return;
 
       const cx = m.x + m.w / 2, cy = m.y + m.h / 2;
       const type = M.typeById(state.doc, m.kind);
+      const raw = m.label || (type ? type.name : 'Machine');
+      const maxW = m.w * zoom - 8;
+
+      const setFont = (px) => { ctx.font = '600 ' + px.toFixed(1) + 'px Inter, "Segoe UI", system-ui, sans-serif'; };
+
+      /* Shrink to fit before giving up on putting the name inside the box. */
       let fontPx = G.clamp(Math.min(m.h * zoom * 0.3, m.w * zoom * 0.16), 8, 15);
+      ctx.save();
+      setFont(fontPx);
+      while (fontPx > MIN_LABEL_PX && ctx.measureText(raw).width > maxW) { fontPx -= 0.5; setFont(fontPx); }
+      const fitsInside = m.h * zoom >= MIN_LABEL_PX * 1.7 && ctx.measureText(raw).width <= maxW;
+      ctx.restore();
+
+      if (!fitsInside) {
+        /* A truncated name is no name at all, so put it outside instead. */
+        drawOutsideLabel(ctx, state, m, raw);
+        return;
+      }
 
       ctx.save();
       ctx.translate(cx, cy);
       ctx.scale(1 / zoom, 1 / zoom);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-
-      const maxW = m.w * zoom - 8;
-      const raw = m.label || (type ? type.name : 'Machine');
-      /* Shrink before truncating so short boxes still read. */
-      const setFont = (px) => { ctx.font = '600 ' + px.toFixed(1) + 'px Inter, "Segoe UI", system-ui, sans-serif'; };
       setFont(fontPx);
-      while (fontPx > 7.5 && ctx.measureText(raw).width > maxW) { fontPx -= 0.5; setFont(fontPx); }
       ctx.fillStyle = C.text;
-      const line = ellipsize(ctx, raw, maxW);
       const showSub = m.h * zoom > 34;
-      ctx.fillText(line, 0, showSub ? -fontPx * 0.55 : 0);
+      ctx.fillText(raw, 0, showSub ? -fontPx * 0.55 : 0);
 
       if (showSub) {
         /* Name the type too, but only when it adds something the label doesn't. */
@@ -269,9 +323,72 @@
     });
   }
 
+  const MIN_LABEL_PX = 7.5;
+  /* An outside label is only worth drawing when the box is big enough to name. */
+  const MIN_OUTSIDE_BOX_PX = 26;
+
+  /* Screen-space rectangles already taken by outside labels this frame, so
+     names never pile on top of each other when the view is zoomed out. */
+  let labelRects = [];
+
+  function claimLabelRect(r) {
+    for (const o of labelRects) {
+      if (r.x < o.x + o.w && r.x + r.w > o.x && r.y < o.y + o.h && r.y + r.h > o.y) return false;
+    }
+    labelRects.push(r);
+    return true;
+  }
+
+  /* A name for a machine too small to hold it: a chip just outside the box,
+     above when a details card is already sitting underneath. */
+  function drawOutsideLabel(ctx, state, m, text) {
+    const zoom = state.cam.zoom;
+    const b = G.rectAABB(m);
+    if (Math.max(b.w, b.h) * zoom < MIN_OUTSIDE_BOX_PX) return;
+
+    const hasCard = state.showSpecs && (m.params || []).some((p) => p.k || p.v);
+    const above = hasCard;
+    const y = above ? -12 : 12;
+
+    ctx.save();
+    ctx.font = '600 10px Inter, "Segoe UI", system-ui, sans-serif';
+    const w = ctx.measureText(text).width;
+    ctx.restore();
+
+    /* Claim the space first — a name that would land on another one is
+       dropped rather than drawn over it. */
+    const anchor = R.toScreen(state.cam, b.x + b.w / 2, above ? b.y : b.y + b.h);
+    if (!claimLabelRect({ x: anchor.x - w / 2 - 4, y: anchor.y + y - 7, w: w + 8, h: 14 })) return;
+
+    ctx.save();
+    ctx.translate(b.x + b.w / 2, above ? b.y : b.y + b.h);
+    ctx.scale(1 / zoom, 1 / zoom);
+    ctx.font = '600 10px Inter, "Segoe UI", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    roundRect(ctx, -w / 2 - 4, y - 7, w + 8, 14, 3);
+    ctx.fillStyle = 'rgba(255,255,255,.9)';
+    ctx.fill();
+    ctx.strokeStyle = hexA(m.color, 0.55);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    /* A short leader so the name is clearly tied to its box. */
+    ctx.beginPath();
+    ctx.moveTo(0, above ? -5 : 5);
+    ctx.lineTo(0, above ? 0 : 0);
+    ctx.strokeStyle = hexA(m.color, 0.55);
+    ctx.stroke();
+
+    ctx.fillStyle = C.text;
+    ctx.fillText(text, 0, y);
+    ctx.restore();
+  }
+
   /* Machines named in the written process carry their step numbers. */
   function drawStepBadge(ctx, state, m) {
-    if (!state.showLabels) return;
+    if (!state.showLabels || driverPose(state, m)) return;
     const nums = M.stepsFor(state.doc, m.id);
     if (!nums.length) return;
     const zoom = state.cam.zoom;
@@ -465,7 +582,7 @@
      tucked under the machine. */
   function drawSpecs(ctx, state, m) {
     const params = (m.params || []).filter((p) => p.k || p.v);
-    if (!params.length) return;
+    if (!params.length || driverPose(state, m)) return;
     const zoom = state.cam.zoom;
     if (zoom < 11) return;
 
@@ -586,8 +703,8 @@
       ctx.save();
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
-      ctx.strokeStyle = 'rgba(79,156,249,.35)';
-      ctx.lineWidth = 0.5;
+      ctx.strokeStyle = 'rgba(79,156,249,.32)';
+      ctx.lineWidth = 0.3;
       for (const leg of path.legs) {
         ctx.beginPath();
         ctx.moveTo(leg.pts[0].x, leg.pts[0].y);
@@ -598,7 +715,19 @@
       }
       /* Number every stop so the order is readable while editing it. */
       path.stops.forEach((s, i) => {
-        const c = M.isRect(s.item) ? G.rectCenter(s.item) : { x: s.item.x, y: s.item.y };
+        const c = s.pos;
+        if (!s.item) {
+          /* A loose point on a hand-drawn path. */
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(c.x, c.y, 4 / zoom, 0, Math.PI * 2);
+          ctx.fillStyle = '#fff';
+          ctx.fill();
+          ctx.lineWidth = 2 / zoom;
+          ctx.strokeStyle = '#4f9cf9';
+          ctx.stroke();
+          ctx.restore();
+        }
         ctx.save();
         ctx.translate(c.x, c.y);
         ctx.scale(1 / zoom, 1 / zoom);
@@ -633,6 +762,9 @@
       ctx.stroke();
       ctx.restore();
     }
+
+    /* When a vehicle is driving it is the marker. */
+    if (play.driverId && M.byId(state.doc, play.driverId)) return;
 
     ctx.save();
     ctx.translate(at.x, at.y);
@@ -690,6 +822,30 @@
         const a = d.points[d.points.length - 1];
         lengthText(ctx, state, a, d.cursor);
       }
+    } else if (d.kind === 'run' && d.nodes && d.nodes.length) {
+      const pts = d.cursor ? d.nodes.concat([d.cursor]) : d.nodes;
+      ctx.save();
+      ctx.setLineDash([0.5, 0.35]);
+      ctx.strokeStyle = '#4f9cf9';
+      ctx.lineWidth = 0.18;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+      ctx.restore();
+      d.nodes.forEach((p, i) => {
+        dot(ctx, p, 4 / zoom, '#4f9cf9');
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.scale(1 / zoom, 1 / zoom);
+        ctx.font = '700 10px Inter, "Segoe UI", system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#1f2937';
+        ctx.fillText(String(i + 1), 0, -13);
+        ctx.restore();
+      });
     } else if (d.kind === 'route' && d.nodes && d.nodes.length) {
       const pts = d.cursor ? d.nodes.concat([d.cursor]) : d.nodes;
       ctx.save();

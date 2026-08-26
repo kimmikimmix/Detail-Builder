@@ -124,9 +124,13 @@ badge and the process line on each zone.
 
 The **Run** tab walks a part through the plant so you can watch the flow.
 
-- **Build from routes** follows your arrows from the first machine with no
-  inbound route and proposes the whole order; or select a machine and press
-  **Add selected**.
+- **Draw path** (<kbd>G</kbd>) lets you click the exact route yourself: click a
+  machine to visit it, click empty space for a corner. <kbd>Enter</kbd>,
+  double-click or right-click finishes. Hand-placed points can then be dragged
+  on the canvas while the Run tab is open.
+- **Build from routes** instead follows your arrows from the first machine with
+  no inbound route and proposes the whole order; **Add selected** appends a
+  machine.
 - **Edit the run freely** — reorder stops with ↑ ↓, drop one with ✕, and set the
   seconds of work at each stop. Between stops the token follows the route you
   drew; where there is no route it takes a straight line (drawn dashed).
@@ -134,11 +138,29 @@ The **Run** tab walks a part through the plant so you can watch the flow.
   **Speed** is travel speed in metres per second. The run is saved with the
   layout.
 
+### Vehicles
+
+Tick **vehicle** on a machine type — or on a single machine in Properties — and
+it becomes an EV, AGV, tug or forklift: drawn with a dashed outline and a nose
+chevron rather than the fixed-plant corner tick.
+
+Pick one under **Driven by** in the Run tab and that vehicle rides the path
+instead of a plain marker, turning to face the way it travels. It stays parked
+where you placed it until you press play, and **Restart** brings it home — the
+animation never moves it in the document, so nothing is disturbed.
+
 ### Layers, locking and hiding
 
 The **Layers** tab lists everything top-of-stack first.
 
-- Click a row to select it; ↑ ↓ change what draws over what.
+- Click a row to select it. **⤒** brings an item right to the front, **⤓** sends
+  it right to the back, and **↑ ↓** move it a single step. The same four sit in
+  the Properties panel as **To front / Forward / Back / To back** and work on a
+  whole selection at once, keeping its internal order.
+- Items paint in list order, so the list is the truth about what covers what.
+  A layout saved before this was drawn grouped by kind — zones, then walls, then
+  machines, routes and text — so those files are sorted into that same order once
+  when opened and look exactly as they did.
 - The **padlock** stops an item being selected or dragged — the usual fix once
   walls and zones are where you want them and you're working on machines.
 - The **eye** takes an item off the canvas entirely; **Show all** brings the
@@ -156,13 +178,25 @@ screen: **Machine details**, **Zone process & times**, **Names**, **Grid**, and
 **Summary tables** — a second page listing every zone with its process and time
 (with a total) and every machine's settings.
 
+Paper is **A4, A3, Letter or Ledger**, landscape or portrait — a bigger sheet
+means a bigger scale, so more of each name fits inside its box.
+
 The drawing is composed at the size it will physically occupy on the page, so
 labels, time badges and detail cards print at the same readable size whatever
 the plant measures, and the bitmap is supersampled to roughly 290 dpi. The
 preview in the dialog is the same composition shown small, so what you see is
-what prints; the note under it gives the drawing scale (e.g. `1:265`). Pick
-landscape or portrait, and choose "Save as PDF" in the browser's print dialog
-for a file.
+what prints; the note under it gives the drawing scale (e.g. `1:182`). Choose
+"Save as PDF" in the browser's print dialog for a file.
+
+### Names that don't fit
+
+A machine too small to hold its name no longer gets a truncated one (`Pa…`).
+The name goes in a chip just outside the box instead, with a short leader —
+above it when a details card is already sitting underneath. Two rules keep that
+from becoming clutter: a box under about 26 pixels across is left unnamed, and
+a chip that would land on one already placed is dropped rather than drawn over
+it. So zoomed out you get the names that fit, and on paper — where the scale is
+fixed to the sheet — you get all of them.
 
 ### Room to work
 
@@ -192,14 +226,15 @@ reported in the Layout stats panel as you build.
 
 | | |
 | --- | --- |
-| <kbd>V</kbd> <kbd>M</kbd> <kbd>W</kbd> <kbd>R</kbd> <kbd>E</kbd> <kbd>Z</kbd> <kbd>T</kbd> <kbd>K</kbd> <kbd>H</kbd> | Select, Machine, Wall, Room, routE, Zone, Text, measure (K), Hand/pan |
+| <kbd>V</kbd> <kbd>M</kbd> <kbd>W</kbd> <kbd>R</kbd> <kbd>E</kbd> <kbd>Z</kbd> <kbd>T</kbd> <kbd>K</kbd> <kbd>G</kbd> <kbd>H</kbd> | Select, Machine, Wall, Room, routE, Zone, Text, measure (K), run-path (G), Hand/pan |
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> | Undo / redo |
 | <kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd> / <kbd>D</kbd> / <kbd>A</kbd> | Copy, paste (at the cursor), duplicate, select all |
 | <kbd>Delete</kbd> | Delete the selection — routes attached to a deleted machine go with it |
 | <kbd>Enter</kbd> | Finish a wall or route · rename the selected item |
 | <kbd>Esc</kbd> | Cancel the current drawing, or clear the selection |
 | Arrows | Nudge by ⅕ grid, or a full grid step with <kbd>Shift</kbd> |
-| <kbd>[</kbd> / <kbd>]</kbd> | Send backward / bring forward |
+| <kbd>[</kbd> / <kbd>]</kbd> | Send backward / bring forward one step |
+| <kbd>{</kbd> / <kbd>}</kbd> | Send to back / bring to front |
 | <kbd>F</kbd> | Zoom to fit |
 | <kbd>P</kbd> | Play / pause the animated run |
 | <kbd>Ctrl</kbd>+<kbd>P</kbd> | Print the drawing |
@@ -281,6 +316,10 @@ The written process rides along in the same file:
 }
 ```
 
+A run stop is either `{ "item": "<id>" }` for somewhere on the layout or
+`{ "x": …, "y": … }` for a point on a hand-drawn path; `driver` is the id of the
+machine marked `"vehicle": true` that rides it.
+
 `link` is the id of the item the step happens at, or `null`. Links pointing at
 items that no longer exist are dropped on load.
 
@@ -298,9 +337,11 @@ item can be locked or hidden, and the animated run is stored alongside:
       "process": "Rough and finish machining, two shifts.", "duration": 40 }
   ],
   "animation": {
-    "stops": [{ "item": "i1", "dwell": 1 }],
+    "stops": [{ "item": "i1", "dwell": 1 },
+              { "x": 20, "y": 12, "dwell": 0 }],
     "speed": 6,
-    "loop": true
+    "loop": true,
+    "driver": "i9"
   }
 }
 ```

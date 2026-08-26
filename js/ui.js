@@ -197,6 +197,10 @@
 
     host.appendChild(row('Colour', colorInput(m.color, (v) => { m.color = v; })));
     host.appendChild(row('Clearance', numberInput(m.clearance, 0.25, (v) => { m.clearance = Math.max(0, v); })));
+    host.appendChild(checkInput('Vehicle — can drive the run', m.vehicle, (v) => {
+      m.vehicle = v;
+      U.refreshStops();
+    }));
 
     const notes = el('textarea', { rows: 2, placeholder: 'Notes, cycle time, operator…' });
     notes.value = m.notes || '';
@@ -339,11 +343,16 @@
   function commonActions(items) {
     const allLocked = items.every((it) => it.locked);
     return el('div', {}, [
+      el('div', { class: 'subhead', text: 'Stacking order' }),
+      el('div', { class: 'btnrow' }, [
+        button('To front', () => app.reorderExtreme(true), '', 'Put it above everything (})'),
+        button('Forward', () => app.reorder(1), '', 'Bring forward one step (])'),
+        button('Back', () => app.reorder(-1), '', 'Send backward one step ([)'),
+        button('To back', () => app.reorderExtreme(false), '', 'Put it behind everything ({)'),
+      ]),
       el('div', { class: 'subhead', text: 'Actions' }),
       el('div', { class: 'btnrow' }, [
         button('Duplicate', () => app.duplicate()),
-        button('Forward', () => app.reorder(1), '', 'Bring forward (])'),
-        button('Back', () => app.reorder(-1), '', 'Send backward ([)'),
         button(allLocked ? 'Unlock' : 'Lock', () => app.setLocked(items.map((i) => i.id), !allLocked), '',
           'A locked item cannot be selected or dragged on the canvas'),
         button('Delete', () => app.deleteSelection(), 'danger'),
@@ -718,12 +727,18 @@
     });
     lock.addEventListener('click', (e) => { e.stopPropagation(); app.setLocked([it.id], !it.locked); });
 
-    const up = el('button', { class: 'layer-btn', text: '↑', title: 'Bring forward' });
+    const top = el('button', { class: 'layer-btn', text: '⤒', title: 'Bring to front' });
+    top.addEventListener('click', (e) => { e.stopPropagation(); app.moveItemExtreme(it.id, true); });
+    const up = el('button', { class: 'layer-btn', text: '↑', title: 'Bring forward one step' });
     up.addEventListener('click', (e) => { e.stopPropagation(); app.moveItem(it.id, 1); });
-    const down = el('button', { class: 'layer-btn', text: '↓', title: 'Send backward' });
+    const down = el('button', { class: 'layer-btn', text: '↓', title: 'Send backward one step' });
     down.addEventListener('click', (e) => { e.stopPropagation(); app.moveItem(it.id, -1); });
-    up.disabled = index === state.doc.items.length - 1;
-    down.disabled = index === 0;
+    const bottom = el('button', { class: 'layer-btn', text: '⤓', title: 'Send to back' });
+    bottom.addEventListener('click', (e) => { e.stopPropagation(); app.moveItemExtreme(it.id, false); });
+    const atTop = index === state.doc.items.length - 1;
+    const atBottom = index === 0;
+    top.disabled = atTop; up.disabled = atTop;
+    down.disabled = atBottom; bottom.disabled = atBottom;
 
     const row = el('div', {
       class: 'layer-row' + (state.selection.has(it.id) ? ' sel' : '') + (it.hidden ? ' off' : ''),
@@ -732,7 +747,7 @@
       dot,
       el('span', { class: 'layer-name', text: itemName(state.doc, it) }),
       el('span', { class: 'layer-kind', text: TYPE_LABEL[it.type] || it.type }),
-      up, down, eye, lock,
+      top, up, down, bottom, eye, lock,
     ]);
     row.addEventListener('click', () => {
       if (it.locked || it.hidden) { app.toast(it.locked ? 'That layer is locked' : 'That layer is hidden'); return; }
@@ -756,11 +771,17 @@
     }
 
     anim.stops.forEach((st, i) => {
-      const item = M.byId(state.doc, st.item);
-      if (!item) return;
+      const item = st.item ? M.byId(state.doc, st.item) : null;
+      if (st.item && !item) return;
 
-      const name = el('span', { class: 'stop-name', text: itemName(state.doc, item), title: 'Select it' });
-      name.addEventListener('click', () => app.focusItem(item.id));
+      const label = item ? itemName(state.doc, item)
+        : 'Point ' + R.fmt(st.x) + ', ' + R.fmt(st.y);
+      const name = el('span', {
+        class: 'stop-name',
+        text: label,
+        title: item ? 'Select it' : 'A hand-placed point — drag it on the canvas',
+      });
+      if (item) name.addEventListener('click', () => app.focusItem(item.id));
 
       const dwell = el('input', { class: 'stop-dwell', type: 'number', step: '0.5', min: '0' });
       dwell.value = R.fmt(st.dwell);
