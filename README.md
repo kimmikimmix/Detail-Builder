@@ -124,15 +124,30 @@ badge and the process line on each zone.
 
 The **Run** tab walks a part through the plant so you can watch the flow.
 
-- **Build from routes** follows your arrows from the first machine with no
-  inbound route and proposes the whole order; or select a machine and press
-  **Add selected**.
+- **Draw path** (<kbd>G</kbd>) lets you click the exact route yourself: click a
+  machine to visit it, click empty space for a corner. <kbd>Enter</kbd>,
+  double-click or right-click finishes. Hand-placed points can then be dragged
+  on the canvas while the Run tab is open.
+- **Build from routes** instead follows your arrows from the first machine with
+  no inbound route and proposes the whole order; **Add selected** appends a
+  machine.
 - **Edit the run freely** — reorder stops with ↑ ↓, drop one with ✕, and set the
   seconds of work at each stop. Between stops the token follows the route you
   drew; where there is no route it takes a straight line (drawn dashed).
 - <kbd>P</kbd> or the Play button runs it, the scrubber moves through it, and
   **Speed** is travel speed in metres per second. The run is saved with the
   layout.
+
+### Vehicles
+
+Tick **vehicle** on a machine type — or on a single machine in Properties — and
+it becomes an EV, AGV, tug or forklift: drawn with a dashed outline and a nose
+chevron rather than the fixed-plant corner tick.
+
+Pick one under **Driven by** in the Run tab and that vehicle rides the path
+instead of a plain marker, turning to face the way it travels. It stays parked
+where you placed it until you press play, and **Restart** brings it home — the
+animation never moves it in the document, so nothing is disturbed.
 
 ### Layers, locking and hiding
 
@@ -204,7 +219,7 @@ reported in the Layout stats panel as you build.
 
 | | |
 | --- | --- |
-| <kbd>V</kbd> <kbd>M</kbd> <kbd>W</kbd> <kbd>R</kbd> <kbd>E</kbd> <kbd>Z</kbd> <kbd>T</kbd> <kbd>K</kbd> <kbd>H</kbd> | Select, Machine, Wall, Room, routE, Zone, Text, measure (K), Hand/pan |
+| <kbd>V</kbd> <kbd>M</kbd> <kbd>W</kbd> <kbd>R</kbd> <kbd>E</kbd> <kbd>Z</kbd> <kbd>T</kbd> <kbd>K</kbd> <kbd>G</kbd> <kbd>H</kbd> | Select, Machine, Wall, Room, routE, Zone, Text, measure (K), run-path (G), Hand/pan |
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> | Undo / redo |
 | <kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd> / <kbd>D</kbd> / <kbd>A</kbd> | Copy, paste (at the cursor), duplicate, select all |
 | <kbd>Delete</kbd> | Delete the selection — routes attached to a deleted machine go with it |
@@ -293,6 +308,10 @@ The written process rides along in the same file:
 }
 ```
 
+A run stop is either `{ "item": "<id>" }` for somewhere on the layout or
+`{ "x": …, "y": … }` for a point on a hand-drawn path; `driver` is the id of the
+machine marked `"vehicle": true` that rides it.
+
 `link` is the id of the item the step happens at, or `null`. Links pointing at
 items that no longer exist are dropped on load.
 
@@ -310,9 +329,11 @@ item can be locked or hidden, and the animated run is stored alongside:
       "process": "Rough and finish machining, two shifts.", "duration": 40 }
   ],
   "animation": {
-    "stops": [{ "item": "i1", "dwell": 1 }],
+    "stops": [{ "item": "i1", "dwell": 1 },
+              { "x": 20, "y": 12, "dwell": 0 }],
     "speed": 6,
-    "loop": true
+    "loop": true,
+    "driver": "i9"
   }
 }
 ```

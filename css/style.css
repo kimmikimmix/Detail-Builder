@@ -5,8 +5,10 @@
   --line:      #2c3444;
   --line-2:    #3a4459;
   --text:      #e6ebf2;
-  --text-dim:  #98a3b5;
-  --text-dim2: #6b7688;
+  --text-dim:  #a2adbe;
+  /* Both dim tones clear 4.5:1 on every panel background — the old dim2 sat
+     at 3.3:1 and small notes were barely legible. */
+  --text-dim2: #8792a5;
   --accent:    #4f9cf9;
   --accent-2:  #2b7de0;
   --danger:    #ef5350;

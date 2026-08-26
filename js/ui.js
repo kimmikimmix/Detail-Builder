@@ -197,6 +197,10 @@
 
     host.appendChild(row('Colour', colorInput(m.color, (v) => { m.color = v; })));
     host.appendChild(row('Clearance', numberInput(m.clearance, 0.25, (v) => { m.clearance = Math.max(0, v); })));
+    host.appendChild(checkInput('Vehicle — can drive the run', m.vehicle, (v) => {
+      m.vehicle = v;
+      U.refreshStops();
+    }));
 
     const notes = el('textarea', { rows: 2, placeholder: 'Notes, cycle time, operator…' });
     notes.value = m.notes || '';
@@ -756,11 +760,17 @@
     }
 
     anim.stops.forEach((st, i) => {
-      const item = M.byId(state.doc, st.item);
-      if (!item) return;
+      const item = st.item ? M.byId(state.doc, st.item) : null;
+      if (st.item && !item) return;
 
-      const name = el('span', { class: 'stop-name', text: itemName(state.doc, item), title: 'Select it' });
-      name.addEventListener('click', () => app.focusItem(item.id));
+      const label = item ? itemName(state.doc, item)
+        : 'Point ' + R.fmt(st.x) + ', ' + R.fmt(st.y);
+      const name = el('span', {
+        class: 'stop-name',
+        text: label,
+        title: item ? 'Select it' : 'A hand-placed point — drag it on the canvas',
+      });
+      if (item) name.addEventListener('click', () => app.focusItem(item.id));
 
       const dwell = el('input', { class: 'stop-dwell', type: 'number', step: '0.5', min: '0' });
       dwell.value = R.fmt(st.dwell);

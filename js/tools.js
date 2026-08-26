@@ -131,6 +131,7 @@
       case 'room':    downRect(e, wp, 'room'); break;
       case 'wall':    downWall(e, wp); break;
       case 'route':   downRoute(e, wp); break;
+      case 'runpath': downRunPath(e, wp); break;
       case 'text':    downText(e, wp); break;
       case 'measure': downMeasure(e, wp); break;
     }
@@ -138,6 +139,19 @@
   }
 
   function downSelect(e, sp, wp) {
+    /* While the run is on show, its loose points are draggable. */
+    if (state.showRun) {
+      const anim = M.anim(state.doc);
+      for (let i = 0; i < anim.stops.length; i++) {
+        const st = anim.stops[i];
+        if (st.item) continue;
+        if (G.dist(st.x, st.y, wp.x, wp.y) <= tolWorld(7)) {
+          state.drag = { type: 'runStop', index: i };
+          return;
+        }
+      }
+    }
+
     /* Handles of a single selected item take priority. */
     if (state.selection.size === 1) {
       const it = M.byId(state.doc, [...state.selection][0]);
@@ -250,6 +264,37 @@
     state.drag = { type: 'routePress', startScreen: screenPos(e) };
   }
 
+  /* Build the animated run by hand: click machines to visit, empty space for a
+     bend, and the path is whatever you drew. */
+  function downRunPath(e, wp) {
+    const host = M.hostAt(state.doc, wp, tolWorld(4));
+    if (!state.draft || state.draft.kind !== 'run') {
+      state.draft = { kind: 'run', stops: [], nodes: [], cursor: wp };
+    }
+    const d = state.draft;
+    const point = host ? G.rectCenter(host) : snapPoint(wp, e);
+    const last = d.nodes[d.nodes.length - 1];
+    if (last && G.dist(last.x, last.y, point.x, point.y) < 1e-6) return;
+
+    d.stops.push(host ? M.stop(host.id, 1) : M.stopAt(point.x, point.y, 0));
+    d.nodes.push(point);
+    state.drag = { type: 'runPress', startScreen: screenPos(e) };
+    app.setHint('Click machines and corners in order · Enter, double-click or right-click finishes · Esc cancels');
+  }
+
+  function finishRunPath() {
+    const d = state.draft;
+    state.draft = null;
+    app.setHint('');
+    if (!d || d.stops.length < 2) { app.invalidate(); return; }
+    M.anim(state.doc).stops = d.stops;
+    app.commit();
+    app.refresh();
+    app.toast('Run path set — ' + d.stops.length + ' stops');
+    if (!state.stickyTool) app.setTool('select');
+  }
+  T.finishRunPath = finishRunPath;
+
   function downText(e, wp) {
     const l = M.label(snapVal(wp.x, e), snapVal(wp.y, e), 'Label');
     state.doc.items.push(l);
@@ -273,7 +318,7 @@
     state.cursorWorld = wp;
 
     const d = state.drag;
-    if (state.draft && (state.draft.kind === 'wall' || state.draft.kind === 'route')) {
+    if (state.draft && (state.draft.kind === 'wall' || state.draft.kind === 'route' || state.draft.kind === 'run')) {
       updateDraftCursor(e, wp);
     }
 
@@ -305,6 +350,15 @@
       case 'waypoint': {
         const it = M.byId(state.doc, d.id);
         if (it) it.waypoints[d.index] = snapPoint(wp, e);
+        break;
+      }
+      case 'runStop': {
+        const st = M.anim(state.doc).stops[d.index];
+        if (st && !st.item) {
+          const p = snapPoint(wp, e);
+          st.x = p.x; st.y = p.y;
+          app.rebuildRun();
+        }
         break;
       }
       case 'endpoint': {
@@ -344,6 +398,13 @@
 
   function updateDraftCursor(e, wp) {
     const d = state.draft;
+    if (d.kind === 'run') {
+      const host = M.hostAt(state.doc, wp, tolWorld(4));
+      d.cursor = host ? G.rectCenter(host) : snapPoint(wp, e);
+      state.hover = host ? host.id : null;
+      app.invalidate();
+      return;
+    }
     if (d.kind === 'wall') {
       const last = d.points[d.points.length - 1];
       d.cursor = e.shiftKey ? snapPoint(G.constrain45(last, wp), e) : snapPoint(wp, e);
@@ -486,6 +547,7 @@
       case 'vertex':
       case 'waypoint':
       case 'endpoint':
+      case 'runStop':
         app.commit();
         break;
       case 'marquee': {
@@ -516,6 +578,8 @@
         }
         break;
       }
+      case 'runPress':
+        break;
       case 'routePress': {
         const dr = state.draft;
         if (dr && dr.kind === 'route' && dragged(d, e)) {
@@ -646,6 +710,7 @@
   T.commitDraft = () => {
     if (!state.draft) return false;
     if (state.draft.kind === 'wall') { finishWall(); return true; }
+    if (state.draft.kind === 'run') { finishRunPath(); return true; }
     if (state.draft.kind === 'route') {
       const d = state.draft;
       const host = d.hostId ? M.byId(state.doc, d.hostId) : null;
@@ -665,6 +730,7 @@
   function onDblClick(e) {
     const wp = worldPos(e);
     if (state.draft && state.draft.kind === 'wall') { finishWall(); return; }
+    if (state.draft && state.draft.kind === 'run') { finishRunPath(); return; }
     if (state.draft && state.draft.kind === 'route') {
       const host = M.hostAt(state.doc, wp, tolWorld(4));
       if (host && host.id !== (state.draft.from.item || null)) finishRoute(M.endpointOn(host.id));
